@@ -13,6 +13,19 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestOpenAIImagesSchedulerSessionHashIgnoresExplicitSessionSignals(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw","prompt_cache_key":"image-session"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	c.Request.Header.Set("session_id", "header-session")
+	c.Request.Header.Set("conversation_id", "conversation-session")
+
+	require.Empty(t, openAIImagesSchedulerSessionHash(c, body))
+}
+
 func TestOpenAIGatewayHandlerImages_DisabledGroupRejectsBeforeScheduling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
