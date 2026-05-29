@@ -119,6 +119,8 @@ tests
 CLAUDE.md
 .claude
 scripts
+!deploy/production/scripts/
+!deploy/production/scripts/*.sh
 .code-review-state
 #openspec/
 code-reviews/
