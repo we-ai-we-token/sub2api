@@ -1,0 +1,151 @@
+name: Production Firewall
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type APPLY to update the production firewall'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-firewall
+  cancel-in-progress: false
+
+jobs:
+  apply-firewall:
+    name: Apply UFW firewall rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "APPLY" ]; then
+            echo "Firewall was not changed because confirm was not APPLY." >&2
+            exit 1
+          fi
+
+      - name: Validate required secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          ADMIN_SSH_IPS: ${{ secrets.ADMIN_SSH_IPS }}
+          CN2_GATEWAY_IPS: ${{ secrets.CN2_GATEWAY_IPS }}
+        run: |
+          set -euo pipefail
+          for name in PROD_HOST PROD_SSH_USER PROD_SSH_KEY ADMIN_SSH_IPS CN2_GATEWAY_IPS; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare SSH key
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${PROD_SSH_KEY}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload and apply firewall script
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          ADMIN_SSH_IPS: ${{ secrets.ADMIN_SSH_IPS }}
+          CN2_GATEWAY_IPS: ${{ secrets.CN2_GATEWAY_IPS }}
+          ALLOW_HTTP_80: ${{ secrets.ALLOW_HTTP_80 }}
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/apply-production-firewall.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          require_root() {
+            if [ "$(id -u)" -ne 0 ]; then
+              echo "This script must run as root." >&2
+              exit 1
+            fi
+          }
+
+          install_ufw() {
+            if command -v ufw >/dev/null 2>&1; then
+              return
+            fi
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y ufw
+              return
+            fi
+            echo "ufw is not installed and apt-get is unavailable." >&2
+            exit 1
+          }
+
+          normalize_ip_list() {
+            sed 's/#.*$//' | tr -d '\r' | awk 'NF { print $1 }'
+          }
+
+          allow_ips() {
+            local port="$1"
+            local proto="$2"
+            local label="$3"
+            local ip
+            while IFS= read -r ip; do
+              [ -n "${ip}" ] || continue
+              echo "Allowing ${label} ${ip} -> ${port}/${proto}"
+              ufw allow from "${ip}" to any port "${port}" proto "${proto}"
+            done
+          }
+
+          require_root
+          install_ufw
+
+          admin_ips_file="$(mktemp)"
+          cn2_ips_file="$(mktemp)"
+          trap 'rm -f "${admin_ips_file}" "${cn2_ips_file}"' EXIT
+
+          printf '%s\n' "${ADMIN_SSH_IPS}" | normalize_ip_list > "${admin_ips_file}"
+          printf '%s\n' "${CN2_GATEWAY_IPS}" | normalize_ip_list > "${cn2_ips_file}"
+
+          if [ ! -s "${admin_ips_file}" ]; then
+            echo "ADMIN_SSH_IPS did not contain any usable IPs." >&2
+            exit 1
+          fi
+          if [ ! -s "${cn2_ips_file}" ]; then
+            echo "CN2_GATEWAY_IPS did not contain any usable IPs." >&2
+            exit 1
+          fi
+
+          ufw --force reset
+          ufw default deny incoming
+          ufw default allow outgoing
+
+          allow_ips 22 tcp "admin SSH" < "${admin_ips_file}"
+          allow_ips 443 tcp "CN2 gateway" < "${cn2_ips_file}"
+
+          if [ "${ALLOW_HTTP_80:-false}" = "true" ]; then
+            echo "Allowing public HTTP 80/tcp"
+            ufw allow 80/tcp
+          fi
+
+          ufw deny 3000/tcp || true
+          ufw deny 5432/tcp || true
+          ufw deny 6379/tcp || true
+
+          ufw --force enable
+          ufw status verbose
+          SCRIPT
+
+          chmod +x /tmp/apply-production-firewall.sh
+          scp -i ~/.ssh/prod_key /tmp/apply-production-firewall.sh "${PROD_SSH_USER}@${PROD_HOST}:/tmp/apply-production-firewall.sh"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" \
+            "sudo ADMIN_SSH_IPS=$(printf '%q' "${ADMIN_SSH_IPS}") CN2_GATEWAY_IPS=$(printf '%q' "${CN2_GATEWAY_IPS}") ALLOW_HTTP_80=$(printf '%q' "${ALLOW_HTTP_80:-false}") /tmp/apply-production-firewall.sh"
