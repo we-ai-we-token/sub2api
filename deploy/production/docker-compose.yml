@@ -1,0 +1,107 @@
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/sub2api/data/caddy_data:/data
+      - /opt/sub2api/data/caddy_config:/config
+    depends_on:
+      - sub2api
+    networks:
+      - sub2api
+
+  sub2api:
+    image: ${SUB2API_IMAGE:-sub2api:local}
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - GIN_MODE=${GIN_MODE:-release}
+      - GOMAXPROCS=${GOMAXPROCS:-64}
+      - DATABASE_HOST=${DATABASE_HOST:-postgres}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_NAME=${DATABASE_NAME:-sub2api}
+      - DATABASE_USER=${DATABASE_USER:-sub2api}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SSL_MODE=${DATABASE_SSL_MODE:-disable}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB:-0}
+    expose:
+      - "3000"
+    volumes:
+      - /opt/sub2api/data/app:/app/data
+      - /opt/sub2api/logs:/app/logs
+    mem_limit: 128g
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - sub2api
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - /opt/sub2api/data/postgres:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    shm_size: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-sub2api} -d $${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sub2api
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    command:
+      - sh
+      - -c
+      - redis-server /usr/local/etc/redis/redis.conf --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - /opt/sub2api/data/redis:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sub2api
+
+networks:
+  sub2api:
+    driver: bridge

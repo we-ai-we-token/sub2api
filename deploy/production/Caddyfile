@@ -1,0 +1,11 @@
+{$ORIGIN_DOMAIN} {
+    encode zstd gzip
+
+    reverse_proxy sub2api:3000 {
+        transport http {
+            read_timeout 600s
+            write_timeout 600s
+            dial_timeout 10s
+        }
+    }
+}
