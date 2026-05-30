@@ -22,19 +22,26 @@ services:
     env_file:
       - .env.production
     environment:
+      - AUTO_SETUP=${AUTO_SETUP:-true}
+      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
+      - SERVER_PORT=${SERVER_PORT:-8080}
       - SERVER_MODE=${SERVER_MODE:-release}
       - GIN_MODE=${GIN_MODE:-release}
       - GOMAXPROCS=${GOMAXPROCS:-64}
       - DATABASE_HOST=${DATABASE_HOST:-postgres}
       - DATABASE_PORT=${DATABASE_PORT:-5432}
-      - DATABASE_NAME=${DATABASE_NAME:-sub2api}
+      - DATABASE_DBNAME=${DATABASE_NAME:-sub2api}
       - DATABASE_USER=${DATABASE_USER:-sub2api}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD}
-      - DATABASE_SSL_MODE=${DATABASE_SSL_MODE:-disable}
+      - DATABASE_SSLMODE=${DATABASE_SSL_MODE:-disable}
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - REDIS_DB=${REDIS_DB:-0}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
     expose:
       - "8080"
     volumes:
