@@ -162,6 +162,8 @@ func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *test
 		ImageSize:          &imageSize,
 		ImageInputSize:     &inputSize,
 		ImageOutputSize:    &outputSize,
+		ImageOutputTokens:  1756,
+		ImageOutputCost:    0.3512,
 		ImageSizeSource:    &source,
 		ImageSizeBreakdown: map[string]int{"4K": 2},
 	}
@@ -177,6 +179,8 @@ func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *test
 		require.Equal(t, inputSize, *got.ImageInputSize)
 		require.NotNil(t, got.ImageOutputSize)
 		require.Equal(t, outputSize, *got.ImageOutputSize)
+		require.Equal(t, 1756, got.ImageOutputTokens)
+		require.InDelta(t, 0.3512, got.ImageOutputCost, 1e-12)
 		require.NotNil(t, got.ImageSizeSource)
 		require.Equal(t, source, *got.ImageSizeSource)
 		require.Equal(t, map[string]int{"4K": 2}, got.ImageSizeBreakdown)
