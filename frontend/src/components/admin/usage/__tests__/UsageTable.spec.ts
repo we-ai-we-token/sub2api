@@ -27,6 +27,9 @@ const messages: Record<string, string> = {
   'usage.imageBillingSize': 'Billing size',
   'usage.imageInputSize': 'Input size',
   'usage.imageOutputSize': 'Output size',
+  'usage.imageOutputTokens': 'Image output tokens',
+  'usage.imageOutputTokenPrice': 'Image output price',
+  'usage.imageOutputCost': 'Image output cost',
   'usage.imageSizeSource': 'Size source',
   'usage.imageSizeBreakdown': 'Size breakdown',
   'usage.imageSizeSourceOutput': 'Upstream output',
@@ -92,6 +95,8 @@ const baseImageRow = {
   image_size: '2K',
   image_input_size: null,
   image_output_size: null,
+  image_output_tokens: 0,
+  image_output_cost: 0,
   image_size_source: null,
   image_size_breakdown: null,
 }
@@ -319,5 +324,50 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+
+  it('displays token-billed image rows as token usage with image output token costs', async () => {
+    const row = {
+      ...baseImageRow,
+      request_id: 'req-admin-token-image',
+      billing_mode: 'token',
+      input_tokens: 100,
+      output_tokens: 250,
+      image_output_tokens: 200,
+      input_cost: 0.0001,
+      output_cost: 0.00015,
+      image_output_cost: 0.002,
+      total_cost: 0.00225,
+      actual_cost: 0.00225,
+    }
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Token')
+    expect(wrapper.text()).toContain('200')
+    expect(wrapper.text()).not.toContain('Image count')
+
+    const tooltipTriggers = wrapper.findAll('.group.relative')
+    await tooltipTriggers[tooltipTriggers.length - 1].trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Image output cost')
+    expect(text).toContain('Image output price')
+    expect(text).toContain('$0.002000')
+    expect(text).toContain('$10.0000 / 1M tokens')
   })
 })
