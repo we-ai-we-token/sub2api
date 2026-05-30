@@ -1,0 +1,63 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+# --- Scope reduction for knowledge graph ---
+
+assets/
+backend/ent/
+backend/migrations/
+backend/internal/web/dist/
+backend/data/
+backend/bin/
+backend/.gocache/
+backend/server
+backend/sub2api
+backend/main
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+docs/claude-relay-service/
+release/
+output/
+tmp/
+temp/
+.gocache/
+.codex/
+.serena/
+.dev/
+code-reviews/
+.claude/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.local
+*.tsbuildinfo
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.bak
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# *.test.*
+# *.spec.*
+# *.snap

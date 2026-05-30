@@ -59,6 +59,16 @@ jobs:
           chmod 600 ~/.ssh/prod_key
           ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
 
+      - name: Upload production deployment files
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          tar czf /tmp/sub2api-production-deploy.tgz -C deploy production
+          scp -i ~/.ssh/prod_key /tmp/sub2api-production-deploy.tgz "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-deploy.tgz"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'rm -rf /tmp/sub2api-production && mkdir -p /tmp/sub2api-production && tar xzf /tmp/sub2api-production-deploy.tgz -C /tmp/sub2api-production && sudo install -m 0644 /tmp/sub2api-production/production/docker-compose.yml /opt/sub2api/compose/docker-compose.yml && sudo install -m 0644 /tmp/sub2api-production/production/Caddyfile /opt/sub2api/compose/Caddyfile && sudo install -m 0755 /tmp/sub2api-production/production/scripts/deploy-app.sh /opt/sub2api/compose/scripts/deploy-app.sh && sudo install -m 0755 /tmp/sub2api-production/production/scripts/healthcheck.sh /opt/sub2api/compose/scripts/healthcheck.sh'
+
       - name: Build Docker image
         run: |
           set -euo pipefail

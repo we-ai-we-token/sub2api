@@ -119,6 +119,8 @@ tests
 CLAUDE.md
 .claude
 scripts
+!deploy/production/scripts/
+!deploy/production/scripts/*.sh
 .code-review-state
 #openspec/
 code-reviews/
@@ -128,6 +130,10 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/superpowers/
+!docs/superpowers/production-operations.md
+!docs/superpowers/plans/
+!docs/superpowers/plans/2026-05-30-production-operations-guide.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

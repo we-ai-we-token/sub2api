@@ -27,6 +27,7 @@ type httpUpstreamRecorder struct {
 	lastBody []byte
 	requests []*http.Request
 	bodies   [][]byte
+	calls    int
 
 	resp      *http.Response
 	responses []*http.Response
@@ -34,6 +35,7 @@ type httpUpstreamRecorder struct {
 }
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.calls++
 	u.lastReq = req
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
