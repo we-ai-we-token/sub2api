@@ -73,4 +73,4 @@ fi
 
 cd "${ROOT_DIR}/compose"
 docker compose pull caddy postgres redis || true
-docker compose up -d postgres redis caddy
+docker compose up -d --no-deps postgres redis
