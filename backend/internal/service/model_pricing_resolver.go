@@ -23,8 +23,6 @@ type ResolvedPricing struct {
 	// Token 模式：区间定价列表（如有，覆盖 BasePricing 中的对应字段）
 	Intervals []PricingInterval
 
-	HasChannelImageOutputPrice bool
-
 	// 按次/图片模式：分层定价
 	RequestTiers []PricingInterval
 
@@ -170,7 +168,6 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	}
 	if chPricing.ImageOutputPrice != nil {
 		resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
-		resolved.HasChannelImageOutputPrice = true
 	}
 }
 
