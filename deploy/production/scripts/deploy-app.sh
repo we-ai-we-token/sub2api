@@ -35,7 +35,7 @@ fi
 printf '%s\n' "${SHA}" > "${ROOT_DIR}/releases/current"
 
 cd "${COMPOSE_DIR}"
-docker compose up -d sub2api caddy
+docker compose --env-file "${ENV_FILE}" up -d sub2api caddy
 
 find "${ROOT_DIR}/releases/images" -maxdepth 1 -name 'sub2api-*.tar.gz' -type f -print0 \
   | xargs -0 ls -t \

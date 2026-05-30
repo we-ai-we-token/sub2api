@@ -72,5 +72,5 @@ else
 fi
 
 cd "${ROOT_DIR}/compose"
-docker compose pull caddy postgres redis || true
-docker compose up -d --no-deps postgres redis
+docker compose --env-file .env.production pull caddy postgres redis || true
+docker compose --env-file .env.production up -d --no-deps postgres redis
