@@ -1216,6 +1216,7 @@ export interface UsageLog {
   output_cost: number
   cache_creation_cost: number
   cache_read_cost: number
+  image_output_cost: number
   total_cost: number
   actual_cost: number
   rate_multiplier: number
@@ -1232,6 +1233,7 @@ export interface UsageLog {
   image_size: string | null
   image_input_size: string | null
   image_output_size: string | null
+  image_output_tokens: number
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null
 
