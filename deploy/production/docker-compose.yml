@@ -11,6 +11,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/sub2api/data/caddy_data:/data
       - /opt/sub2api/data/caddy_config:/config
+      - /opt/sub2api/logs/caddy:/var/log/caddy
     depends_on:
       - sub2api
     networks:
