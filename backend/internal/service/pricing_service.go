@@ -478,8 +478,8 @@ func (s *PricingService) useFallbackPricing() error {
 		return fmt.Errorf("read fallback failed: %w", err)
 	}
 
-	pricingFile := s.getPricingFilePath()
-	if err := os.WriteFile(pricingFile, data, 0644); err != nil {
+	pricingFile := filepath.Clean(s.getPricingFilePath())
+	if err := os.WriteFile(pricingFile, data, 0644); err != nil { // #nosec G703 -- pricingFile uses configured data dir with a fixed filename.
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to copy fallback: %v", err)
 	}
 

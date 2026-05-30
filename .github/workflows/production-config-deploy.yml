@@ -1,0 +1,78 @@
+name: Production Config Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type CONFIG to sync production config files'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-config-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-config:
+    name: Sync production config and reload Caddy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "CONFIG" ]; then
+            echo "Production config deploy was not run because confirm was not CONFIG." >&2
+            exit 1
+          fi
+
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release
+
+      - name: Validate required secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          for name in PROD_HOST PROD_SSH_USER PROD_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare SSH
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${PROD_SSH_KEY}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload production config files
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          tar czf /tmp/sub2api-production-config.tgz -C deploy production
+          scp -i ~/.ssh/prod_key /tmp/sub2api-production-config.tgz "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-config.tgz"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'rm -rf /tmp/sub2api-production-config && mkdir -p /tmp/sub2api-production-config && tar xzf /tmp/sub2api-production-config.tgz -C /tmp/sub2api-production-config && sudo install -m 0644 /tmp/sub2api-production-config/production/docker-compose.yml /opt/sub2api/compose/docker-compose.yml && sudo install -m 0644 /tmp/sub2api-production-config/production/Caddyfile /opt/sub2api/compose/Caddyfile && sudo install -m 0755 /tmp/sub2api-production-config/production/scripts/healthcheck.sh /opt/sub2api/compose/scripts/healthcheck.sh'
+
+      - name: Validate and reload Caddy
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'cd /opt/sub2api/compose && sudo docker compose --env-file .env.production up -d --no-deps caddy && sudo docker compose --env-file .env.production exec -T caddy caddy validate --config /etc/caddy/Caddyfile && sudo docker compose --env-file .env.production exec -T caddy caddy reload --config /etc/caddy/Caddyfile'

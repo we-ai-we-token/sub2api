@@ -1,0 +1,104 @@
+name: Production Init
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type INIT to sync production deployment files'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-init
+  cancel-in-progress: false
+
+jobs:
+  init:
+    name: Initialize production server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "INIT" ]; then
+            echo "Production init was not run because confirm was not INIT." >&2
+            exit 1
+          fi
+
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release
+
+      - name: Validate required secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          for name in PROD_HOST PROD_SSH_USER PROD_SSH_KEY POSTGRES_PASSWORD REDIS_PASSWORD JWT_SECRET TOTP_ENCRYPTION_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare SSH
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${PROD_SSH_KEY}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload production deployment files
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          tar czf /tmp/sub2api-production-deploy.tgz -C deploy production
+          scp -i ~/.ssh/prod_key /tmp/sub2api-production-deploy.tgz "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-deploy.tgz"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'rm -rf /tmp/sub2api-production && mkdir -p /tmp/sub2api-production && tar xzf /tmp/sub2api-production-deploy.tgz -C /tmp/sub2api-production'
+
+      - name: Run production init script
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'sudo /tmp/sub2api-production/production/scripts/init-server.sh /tmp/sub2api-production/production'
+
+      - name: Upload production secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          secrets_file="/tmp/sub2api-production-secrets.env"
+          {
+            printf 'POSTGRES_PASSWORD=%s\n' "${POSTGRES_PASSWORD}"
+            printf 'DATABASE_PASSWORD=%s\n' "${POSTGRES_PASSWORD}"
+            printf 'REDIS_PASSWORD=%s\n' "${REDIS_PASSWORD}"
+            printf 'JWT_SECRET=%s\n' "${JWT_SECRET}"
+            printf 'TOTP_ENCRYPTION_KEY=%s\n' "${TOTP_ENCRYPTION_KEY}"
+          } > "${secrets_file}"
+          chmod 600 "${secrets_file}"
+          scp -i ~/.ssh/prod_key "${secrets_file}" "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-secrets.env"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'sudo install -m 0600 /tmp/sub2api-production-secrets.env /opt/sub2api/compose/.env.production.secrets && sudo sh -c "grep -Ev \"^(POSTGRES_PASSWORD|DATABASE_PASSWORD|REDIS_PASSWORD|JWT_SECRET|TOTP_ENCRYPTION_KEY)=\" /opt/sub2api/compose/.env.production > /opt/sub2api/compose/.env.production.tmp && cat /opt/sub2api/compose/.env.production.secrets >> /opt/sub2api/compose/.env.production.tmp && install -m 0600 /opt/sub2api/compose/.env.production.tmp /opt/sub2api/compose/.env.production && rm -f /opt/sub2api/compose/.env.production.tmp /opt/sub2api/compose/.env.production.secrets /tmp/sub2api-production-secrets.env"'

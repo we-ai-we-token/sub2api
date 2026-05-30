@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -1113,25 +1114,31 @@ func (k oidcJWK) publicKey() (any, error) {
 		return &rsa.PublicKey{N: n, E: e}, nil
 	case "EC":
 		var curve elliptic.Curve
+		var ecdhCurve ecdh.Curve
 		switch strings.TrimSpace(k.Crv) {
 		case "P-256":
 			curve = elliptic.P256()
+			ecdhCurve = ecdh.P256()
 		case "P-384":
 			curve = elliptic.P384()
+			ecdhCurve = ecdh.P384()
 		case "P-521":
 			curve = elliptic.P521()
+			ecdhCurve = ecdh.P521()
 		default:
 			return nil, fmt.Errorf("unsupported ec curve: %s", k.Crv)
 		}
-		x, err := decodeBase64URLBigInt(k.X)
+		xBytes, err := decodeBase64URLBytes(k.X)
 		if err != nil {
 			return nil, fmt.Errorf("decode ec x: %w", err)
 		}
-		y, err := decodeBase64URLBigInt(k.Y)
+		yBytes, err := decodeBase64URLBytes(k.Y)
 		if err != nil {
 			return nil, fmt.Errorf("decode ec y: %w", err)
 		}
-		if !curve.IsOnCurve(x, y) {
+		x, y := new(big.Int).SetBytes(xBytes), new(big.Int).SetBytes(yBytes)
+		encoded := append([]byte{4}, append(xBytes, yBytes...)...)
+		if _, err := ecdhCurve.NewPublicKey(encoded); err != nil {
 			return nil, errors.New("ec point is not on curve")
 		}
 		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
@@ -1140,13 +1147,21 @@ func (k oidcJWK) publicKey() (any, error) {
 	}
 }
 
-func decodeBase64URLBigInt(raw string) (*big.Int, error) {
+func decodeBase64URLBytes(raw string) ([]byte, error) {
 	buf, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(raw))
 	if err != nil {
 		return nil, err
 	}
 	if len(buf) == 0 {
 		return nil, errors.New("empty value")
+	}
+	return buf, nil
+}
+
+func decodeBase64URLBigInt(raw string) (*big.Int, error) {
+	buf, err := decodeBase64URLBytes(raw)
+	if err != nil {
+		return nil, err
 	}
 	return new(big.Int).SetBytes(buf), nil
 }
