@@ -1,42 +1,42 @@
-# Production Operations Guide
+# 生产运维操作指南
 
-This guide explains how to operate the repository-managed production deployment from GitHub Actions.
+这份文档说明怎么通过 GitHub Actions 操作仓库内管理的生产部署。
 
-The production origin runs from the `release` branch and uses files under `deploy/production/`. The server-side root is `/opt/sub2api`.
+生产 origin 使用 `release` 分支，部署模板在 `deploy/production/`。服务器上的根目录是 `/opt/sub2api`。
 
-Do not commit real production secrets. Do not delete `/opt/sub2api/data` during normal operations.
+不要把真实生产密钥提交到仓库。正常运维时不要删除 `/opt/sub2api/data`。
 
-## Related Files
+## 相关文件
 
-- GitHub Secrets reference: `docs/superpowers/production-github-secrets.md`
-- Production Compose template: `deploy/production/docker-compose.yml`
-- Production env template: `deploy/production/env.example`
-- Init script: `deploy/production/scripts/init-server.sh`
-- Deploy script: `deploy/production/scripts/deploy-app.sh`
-- Healthcheck script: `deploy/production/scripts/healthcheck.sh`
-- Init workflow: `.github/workflows/production-init.yml`
-- Deploy workflow: `.github/workflows/production-deploy.yml`
-- Firewall workflow: `.github/workflows/production-firewall.yml`
+- GitHub Secrets 说明：`docs/superpowers/production-github-secrets.md`
+- 生产 Compose 模板：`deploy/production/docker-compose.yml`
+- 生产环境变量模板：`deploy/production/env.example`
+- 初始化脚本：`deploy/production/scripts/init-server.sh`
+- 部署脚本：`deploy/production/scripts/deploy-app.sh`
+- 健康检查脚本：`deploy/production/scripts/healthcheck.sh`
+- 初始化 workflow：`.github/workflows/production-init.yml`
+- 部署 workflow：`.github/workflows/production-deploy.yml`
+- 防火墙 workflow：`.github/workflows/production-firewall.yml`
 
-## GitHub Actions Overview
+## 三个 GitHub Actions 是干什么的
 
-| Action | Confirm input | Purpose | Typical frequency |
+| Action | confirm 输入 | 用途 | 什么时候用 |
 | --- | --- | --- | --- |
-| `Production Init` | `INIT` | Sync production templates, prepare `/opt/sub2api`, write secrets, start base services | First setup and template syncs |
-| `Production Deploy` | `DEPLOY` | Build image from `release`, upload tar archive, restart `sub2api`, run healthcheck | Every release deploy |
-| `Production Firewall` | `APPLY` | Apply UFW allowlist for SSH and CN2 gateway access | After IP allowlist changes |
+| `Production Init` | `INIT` | 同步生产模板、准备 `/opt/sub2api`、写入 secrets、启动基础服务 | 第一次初始化；模板或 secrets 变更后 |
+| `Production Deploy` | `DEPLOY` | 从 `release` 构建镜像、上传 tar 包、重启 `sub2api`、跑健康检查 | 每次正式发版 |
+| `Production Firewall` | `APPLY` | 按 allowlist 应用 UFW 防火墙规则 | 首次开防火墙；SSH/CN2 IP 变更后 |
 
-All three workflows are manual. They do not run on push.
+这三个 workflow 都是手动触发，不会因为 push 自动部署。
 
-## Required GitHub Secrets
+## 需要先配置的 GitHub Secrets
 
-Configure repository secrets in GitHub:
+进入 GitHub 仓库：
 
 ```text
 Settings → Secrets and variables → Actions → Repository secrets
 ```
 
-Required for server access:
+所有 workflow 都需要服务器登录信息：
 
 ```text
 PROD_HOST
@@ -44,7 +44,7 @@ PROD_SSH_USER
 PROD_SSH_KEY
 ```
 
-Required for `Production Init`:
+`Production Init` 还需要应用密钥：
 
 ```text
 POSTGRES_PASSWORD
@@ -53,82 +53,88 @@ JWT_SECRET
 TOTP_ENCRYPTION_KEY
 ```
 
-Required for `Production Firewall`:
+`Production Firewall` 还需要 IP 白名单：
 
 ```text
 ADMIN_SSH_IPS
 CN2_GATEWAY_IPS
 ```
 
-Optional for `Production Firewall`:
+`Production Firewall` 可选：
 
 ```text
 ALLOW_HTTP_80
 ```
 
-Use `ALLOW_HTTP_80=true` only when the origin Caddy needs public HTTP-01 certificate issuance on `80/tcp`.
+只有 origin Caddy 需要公网 `80/tcp` 做 HTTP-01 证书签发时，才设置：
 
-## Before Running Any Action
+```text
+ALLOW_HTTP_80=true
+```
 
-Make sure the local `release` branch has been pushed to GitHub:
+否则不设置，或设置成 `false`。
+
+## 跑任何 Action 前先确认
+
+本地 `release` 分支必须先推到 GitHub：
 
 ```bash
 git push origin release
 ```
 
-The workflows checkout `release`, so unpushed local commits are invisible to GitHub Actions.
+这些 workflow 都会 checkout GitHub 上的 `release`。如果本地提交没 push，GitHub Actions 看不到。
 
-## Action 1: Production Init
+## Action 1：Production Init
 
-Use this Action to initialize or resync the production server templates.
+`Production Init` 用来初始化服务器，或者把生产模板重新同步到服务器。
 
-### When to run
+### 什么时候跑
 
-Run `Production Init` when:
+这些情况跑 `Production Init`：
 
-- setting up the server for the first time;
-- updating production Compose, Caddy, Postgres, Redis, or script templates;
-- refreshing `.env.production` secret values from GitHub Secrets.
+- 第一次搭生产服务器；
+- `deploy/production` 下的 Compose、Caddy、Postgres、Redis、脚本模板有变更；
+- GitHub Secrets 里的生产密钥变更后，需要刷新 `/opt/sub2api/compose/.env.production`。
 
-It should not delete existing data directories.
+这个 Action 不应该删除已有数据目录。
 
-### How to run
+### 怎么跑
 
-In GitHub:
+在 GitHub 页面进入：
 
 ```text
 Actions → Production Init → Run workflow
 ```
 
-Select branch:
+Branch 选：
 
 ```text
 release
 ```
 
-Enter:
+输入：
 
 ```text
 confirm = INIT
 ```
 
-Start the workflow.
+然后点击运行。
 
-### What it does
+### 它会做什么
 
-The workflow:
+这个 workflow 会：
 
-1. checks out `release`;
-2. validates required server and app secrets;
-3. prepares the SSH key;
-4. uploads `deploy/production` to `/tmp/sub2api-production` on the server;
-5. runs:
+1. checkout `release`；
+2. 检查服务器登录 secrets 和应用 secrets 是否都配置了；
+3. 准备 SSH key；
+4. 把 `deploy/production` 上传到服务器的 `/tmp/sub2api-production`；
+5. 在服务器执行：
 
 ```bash
 sudo /tmp/sub2api-production/production/scripts/init-server.sh /tmp/sub2api-production/production
 ```
 
-6. writes these secret-backed values into `/opt/sub2api/compose/.env.production`:
+6. 把这些 GitHub Secrets 写入 `/opt/sub2api/compose/.env.production`：
 
 ```text
 POSTGRES_PASSWORD
@@ -138,7 +144,7 @@ JWT_SECRET
 TOTP_ENCRYPTION_KEY
 ```
 
-7. starts or updates the base services:
+7. 启动或更新基础服务：
 
 ```text
 postgres
@@ -146,15 +152,15 @@ redis
 caddy
 ```
 
-### Verify init
+### 怎么确认初始化成功
 
-SSH to the production server:
+登录服务器：
 
 ```bash
 ssh <PROD_SSH_USER>@<PROD_HOST>
 ```
 
-Check files:
+检查目录和脚本是否存在：
 
 ```bash
 sudo ls -la /opt/sub2api
@@ -162,124 +168,134 @@ sudo ls -la /opt/sub2api/compose
 sudo ls -la /opt/sub2api/compose/scripts
 ```
 
-Check services:
+检查服务：
 
 ```bash
 cd /opt/sub2api/compose
 sudo docker compose ps
 ```
 
-Expected: `postgres`, `redis`, and `caddy` are present. The `sub2api` service may not be healthy until `Production Deploy` uploads an app image.
+预期：能看到 `postgres`、`redis`、`caddy`。`sub2api` 可能要等 `Production Deploy` 上传应用镜像后才会正常。
 
-Check selected non-secret env values:
+只检查非敏感 env 项：
 
 ```bash
 sudo grep -E '^(ORIGIN_DOMAIN|SUB2API_IMAGE|SERVER_MODE|GIN_MODE)=' /opt/sub2api/compose/.env.production
 ```
 
-Do not print or paste full `.env.production` output because it contains secrets.
+不要把完整 `.env.production` 打印出来或贴出来，里面有密钥。
 
-## Action 2: Production Deploy
+## Action 2：Production Deploy
 
-Use this Action to deploy the current `release` branch to production.
+`Production Deploy` 用来把当前 GitHub 上的 `release` 部署到生产。
 
-### When to run
+### 什么时候跑
 
-Run `Production Deploy` after:
+这些情况跑 `Production Deploy`：
 
-- merging verified changes into `release`;
-- pushing `release` to GitHub;
-- confirming production secrets and init are already in place.
+- 已经把验证过的变更合并到 `release`；
+- 已经 `git push origin release`；
+- `Production Init` 已经跑过，生产服务器上有 `/opt/sub2api/compose/.env.production`。
 
-### How to run
+### 怎么跑
 
-In GitHub:
+在 GitHub 页面进入：
 
 ```text
 Actions → Production Deploy → Run workflow
 ```
 
-Select branch:
+Branch 选：
 
 ```text
 release
 ```
 
-Enter:
+输入：
 
 ```text
 confirm = DEPLOY
 ```
 
-Start the workflow.
+然后点击运行。
 
-### What it does
+### 它会做什么
 
-The workflow:
+这个 workflow 会：
 
-1. checks out `release`;
-2. validates SSH secrets;
-3. builds the Docker image:
+1. checkout `release`；
+2. 检查 SSH secrets；
+3. 构建 Docker 镜像：
 
 ```text
 sub2api:<GITHUB_SHA>
 ```
 
-4. saves and compresses it as:
+4. 保存并压缩成：
 
 ```text
 sub2api-<GITHUB_SHA>.tar.gz
 ```
 
-5. uploads it to:
+5. 上传到服务器：
 
 ```text
 /opt/sub2api/releases/images/sub2api-<GITHUB_SHA>.tar.gz
 ```
 
-6. runs:
+6. 在服务器执行：
 
 ```bash
 sudo /opt/sub2api/compose/scripts/deploy-app.sh <GITHUB_SHA>
 ```
 
-7. updates `/opt/sub2api/compose/.env.production` so `SUB2API_IMAGE=sub2api:<GITHUB_SHA>`;
-8. writes the deployed SHA to `/opt/sub2api/releases/current`;
-9. restarts only the `sub2api` service;
-10. runs:
+7. 更新 `/opt/sub2api/compose/.env.production`：
+
+```text
+SUB2API_IMAGE=sub2api:<GITHUB_SHA>
+```
+
+8. 把当前部署 SHA 写入：
+
+```text
+/opt/sub2api/releases/current
+```
+
+9. 只重启 `sub2api` 服务；
+10. 执行健康检查：
 
 ```bash
 sudo /opt/sub2api/compose/scripts/healthcheck.sh
 ```
 
-### Verify deploy
+### 怎么确认部署成功
 
-On the server:
+在服务器上检查服务：
 
 ```bash
 cd /opt/sub2api/compose
 sudo docker compose ps
 ```
 
-Check health:
+跑健康检查：
 
 ```bash
 sudo /opt/sub2api/compose/scripts/healthcheck.sh
 ```
 
-Check deployed SHA:
+看当前部署的 SHA：
 
 ```bash
 sudo cat /opt/sub2api/releases/current
 ```
 
-Check the configured image:
+看当前配置的镜像：
 
 ```bash
 sudo grep '^SUB2API_IMAGE=' /opt/sub2api/compose/.env.production
 ```
 
-Check logs:
+看日志：
 
 ```bash
 cd /opt/sub2api/compose
@@ -287,102 +303,102 @@ sudo docker compose logs --tail=100 sub2api
 sudo docker compose logs --tail=100 caddy
 ```
 
-Check uploaded image archives:
+看已经上传的镜像包：
 
 ```bash
 sudo ls -lh /opt/sub2api/releases/images
 ```
 
-## Action 3: Production Firewall
+## Action 3：Production Firewall
 
-Use this Action to apply the production UFW allowlist.
+`Production Firewall` 用来应用生产 UFW 防火墙白名单。
 
-### When to run
+### 什么时候跑
 
-Run `Production Firewall` when:
+这些情况跑 `Production Firewall`：
 
-- setting firewall rules for the first time;
-- changing admin SSH IPs;
-- changing CN2 gateway IPs;
-- intentionally changing whether public `80/tcp` is open.
+- 第一次开启生产防火墙；
+- 管理员 SSH IP 变了；
+- CN2 网关 IP 变了；
+- 需要改变是否开放公网 `80/tcp`。
 
-### Lockout warning
+### 防锁死提醒
 
-Before running this Action, confirm `ADMIN_SSH_IPS` contains your current admin egress IP.
+跑这个 Action 前，先确认 `ADMIN_SSH_IPS` 包含你当前的出口 IP。
 
-If `ADMIN_SSH_IPS` is wrong, the workflow can remove your SSH access.
+如果 `ADMIN_SSH_IPS` 配错，workflow 可能会把你的 SSH 访问关掉。
 
-### How to run
+### 怎么跑
 
-In GitHub:
+在 GitHub 页面进入：
 
 ```text
 Actions → Production Firewall → Run workflow
 ```
 
-Select branch:
+Branch 选：
 
 ```text
 release
 ```
 
-Enter:
+输入：
 
 ```text
 confirm = APPLY
 ```
 
-Start the workflow.
+然后点击运行。
 
-### What it does
+### 它会做什么
 
-The workflow:
+这个 workflow 会：
 
-1. validates SSH and firewall secrets;
-2. uploads a temporary UFW script to the production server;
-3. installs `ufw` if missing on an apt-based host;
-4. resets UFW rules;
-5. sets default incoming policy to deny;
-6. sets default outgoing policy to allow;
-7. allows `ADMIN_SSH_IPS` to `22/tcp`;
-8. allows `CN2_GATEWAY_IPS` to `443/tcp`;
-9. allows public `80/tcp` only when `ALLOW_HTTP_80=true`;
-10. denies public `3000/tcp`, `5432/tcp`, and `6379/tcp`;
-11. enables UFW and prints final status.
+1. 检查 SSH 和防火墙 secrets；
+2. 上传一个临时 UFW 脚本到生产服务器；
+3. 如果是 apt 系系统且没装 `ufw`，自动安装；
+4. reset UFW 规则；
+5. 设置默认入站 deny；
+6. 设置默认出站 allow；
+7. 允许 `ADMIN_SSH_IPS` 访问 `22/tcp`；
+8. 允许 `CN2_GATEWAY_IPS` 访问 `443/tcp`；
+9. 只有 `ALLOW_HTTP_80=true` 时才开放公网 `80/tcp`；
+10. deny 公网 `3000/tcp`、`5432/tcp`、`6379/tcp`；
+11. enable UFW 并打印最终状态。
 
-### Verify firewall
+### 怎么确认防火墙成功
 
-On the server:
+在服务器上执行：
 
 ```bash
 sudo ufw status verbose
 ```
 
-Expected:
+预期：
 
-- `22/tcp` allowed only from admin IPs;
-- `443/tcp` allowed only from CN2 gateway IPs;
-- `80/tcp` allowed only if `ALLOW_HTTP_80=true`;
-- `3000/tcp`, `5432/tcp`, and `6379/tcp` not publicly open.
+- `22/tcp` 只允许管理员 IP；
+- `443/tcp` 只允许 CN2 网关 IP；
+- `80/tcp` 只有 `ALLOW_HTTP_80=true` 时开放；
+- `3000/tcp`、`5432/tcp`、`6379/tcp` 没有公网开放。
 
-Also verify SSH from an allowed admin IP before ending the maintenance window.
+维护窗口结束前，再从允许的管理员 IP 新开一个 SSH 连接确认没锁死。
 
-## Routine Operations
+## 日常检查命令
 
-### Check all services
+### 看所有服务
 
 ```bash
 cd /opt/sub2api/compose
 sudo docker compose ps
 ```
 
-### Run healthcheck
+### 跑健康检查
 
 ```bash
 sudo /opt/sub2api/compose/scripts/healthcheck.sh
 ```
 
-### View recent logs
+### 看最近日志
 
 ```bash
 cd /opt/sub2api/compose
@@ -392,44 +408,44 @@ sudo docker compose logs --tail=100 postgres
 sudo docker compose logs --tail=100 redis
 ```
 
-### Follow app logs
+### 实时跟 app 日志
 
 ```bash
 cd /opt/sub2api/compose
 sudo docker compose logs -f sub2api
 ```
 
-### Check disk usage
+### 看磁盘使用
 
 ```bash
 sudo df -h
 sudo du -sh /opt/sub2api/data/* /opt/sub2api/releases/images /opt/sub2api/logs 2>/dev/null
 ```
 
-### Check current deployment
+### 看当前部署版本
 
 ```bash
 sudo cat /opt/sub2api/releases/current
 sudo grep '^SUB2API_IMAGE=' /opt/sub2api/compose/.env.production
 ```
 
-## Manual Recovery Before Rollback Workflow Exists
+## 还没有 rollback workflow 时的手动恢复
 
-There is no rollback workflow yet. The deploy script keeps recent image archives and Docker images, so a manual rollback can use a previously deployed SHA if it is still present on the server.
+现在还没有 rollback workflow。`deploy-app.sh` 会保留最近几个镜像包和 Docker 镜像，所以只要旧 SHA 还在服务器上，就可以手动切回旧版本。
 
-List known image archives:
+看已有镜像包：
 
 ```bash
 sudo ls -lh /opt/sub2api/releases/images
 ```
 
-List local Docker images:
+看本地 Docker 镜像：
 
 ```bash
 sudo docker images 'sub2api'
 ```
 
-Rollback to an already-loaded image tag:
+如果旧镜像已经 loaded，切回旧 tag：
 
 ```bash
 cd /opt/sub2api/compose
@@ -438,35 +454,35 @@ sudo docker compose up -d sub2api
 sudo /opt/sub2api/compose/scripts/healthcheck.sh
 ```
 
-If the image is archived but not loaded, load it first:
+如果旧镜像只有 tar 包，还没 loaded，先加载：
 
 ```bash
 sudo gzip -dc /opt/sub2api/releases/images/sub2api-<previous-sha>.tar.gz | sudo docker load
 ```
 
-Then update `SUB2API_IMAGE` and restart `sub2api`.
+然后再更新 `SUB2API_IMAGE` 并重启 `sub2api`。
 
-Do not remove `/opt/sub2api/data` during rollback.
+rollback 时不要删除 `/opt/sub2api/data`。
 
-## Failure Triage
+## 常见失败排查
 
-### Workflow cannot SSH
+### Workflow 连不上 SSH
 
-Check:
+检查：
 
-- `PROD_HOST` is reachable from GitHub-hosted runners;
-- `PROD_SSH_USER` is correct;
-- `PROD_SSH_KEY` is the private key for that user;
-- the server accepts that key;
-- firewall still allows GitHub runner access if the workflow depends on direct SSH.
+- `PROD_HOST` 是否能被 GitHub-hosted runner 访问；
+- `PROD_SSH_USER` 是否正确；
+- `PROD_SSH_KEY` 是否是该用户对应的私钥；
+- 服务器是否允许这个 key 登录；
+- 防火墙是否允许这次 SSH 连接。
 
-### Production Init fails during Docker install
+### Production Init 在安装 Docker 时失败
 
-The init script installs Docker only on apt-based hosts. If the host is not Debian/Ubuntu-compatible, install Docker manually and rerun `Production Init`.
+初始化脚本只会在 apt 系系统上自动安装 Docker。如果服务器不是 Debian/Ubuntu 系，先手动安装 Docker，再重新跑 `Production Init`。
 
-### Production Deploy fails healthcheck
+### Production Deploy 健康检查失败
 
-Check service status and logs:
+看服务状态和日志：
 
 ```bash
 cd /opt/sub2api/compose
@@ -476,22 +492,22 @@ sudo docker compose logs --tail=100 postgres
 sudo docker compose logs --tail=100 redis
 ```
 
-Check env wiring without printing secrets:
+检查非敏感 env 配置：
 
 ```bash
 sudo grep -E '^(SUB2API_IMAGE|DATABASE_HOST|DATABASE_PORT|DATABASE_NAME|DATABASE_USER|REDIS_HOST|REDIS_PORT|REDIS_DB)=' /opt/sub2api/compose/.env.production
 ```
 
-### Firewall workflow risks lockout
+### Firewall workflow 可能锁 SSH
 
-Before applying firewall changes, open a second SSH session from an allowed admin IP. Keep it open until `sudo ufw status verbose` confirms the expected rules.
+应用防火墙前，先从允许的管理员 IP 开第二个 SSH session，并保持打开。等 `sudo ufw status verbose` 确认规则符合预期后，再结束维护。
 
-## Known Gaps
+## 已知缺口
 
-The first production version does not yet include:
+第一版生产部署还没有：
 
-- automated backup and restore;
-- rollback workflow;
-- external monitoring and alerting;
-- load testing procedure;
-- performance tuning after real production traffic.
+- 自动备份和恢复；
+- rollback workflow；
+- 外部监控和告警；
+- 压测流程；
+- 基于真实生产流量的性能调优。
