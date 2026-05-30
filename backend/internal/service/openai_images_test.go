@@ -1497,7 +1497,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRetriesEmptyCompletedOu
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "req_img_retry_success", result.RequestID)
-	require.Equal(t, 2, svc.httpUpstream.(*httpUpstreamRecorder).calls)
+	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
+	require.True(t, ok)
+	require.Equal(t, 2, recorder.calls)
 
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
@@ -1561,10 +1563,13 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsNoImageWhenCompl
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 0, result.ImageCount)
-	require.Equal(t, 2, svc.httpUpstream.(*httpUpstreamRecorder).calls)
+	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
+	require.True(t, ok)
+	require.Equal(t, 2, recorder.calls)
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
-	_, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
-	require.False(t, ok)
+	foundCompleted := false
+	_, foundCompleted = findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+	require.False(t, foundCompleted)
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
@@ -1624,7 +1629,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingRetriesEmptyComplete
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "req_img_retry_nonstream_success", result.RequestID)
-	require.Equal(t, 2, svc.httpUpstream.(*httpUpstreamRecorder).calls)
+	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
+	require.True(t, ok)
+	require.Equal(t, 2, recorder.calls)
 	require.Equal(t, "bm9uc3RyZWFt", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 

@@ -5987,18 +5987,6 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
-func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
-	if s.resolver == nil || apiKey == nil || apiKey.Group == nil {
-		return nil
-	}
-	gid := apiKey.Group.ID
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-	if resolved.Source == PricingSourceChannel {
-		return resolved
-	}
-	return nil
-}
-
 // ParseCodexRateLimitHeaders extracts Codex usage limits from response headers.
 // Exported for use in ratelimit_service when handling OpenAI 429 responses.
 func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
