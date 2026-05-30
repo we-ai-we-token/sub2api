@@ -1,0 +1,94 @@
+name: Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to deploy the release branch'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Validate confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "DEPLOY" ]; then
+            echo "Production deploy was not run because confirm was not DEPLOY." >&2
+            exit 1
+          fi
+
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release
+
+      - name: Validate required secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          for name in PROD_HOST PROD_SSH_USER PROD_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare SSH
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${PROD_SSH_KEY}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          docker build -f deploy/Dockerfile -t "sub2api:${SHA}" .
+          docker save "sub2api:${SHA}" | gzip -9 > "sub2api-${SHA}.tar.gz"
+
+      - name: Upload image archive
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'sudo install -d -m 0755 /opt/sub2api/releases/images && sudo chown "$USER":"$USER" /opt/sub2api/releases/images'
+          scp -i ~/.ssh/prod_key "sub2api-${SHA}.tar.gz" "${PROD_SSH_USER}@${PROD_HOST}:/opt/sub2api/releases/images/sub2api-${SHA}.tar.gz"
+
+      - name: Deploy image on production server
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" "sudo /opt/sub2api/compose/scripts/deploy-app.sh ${SHA}"
+
+      - name: Run healthcheck
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'sudo /opt/sub2api/compose/scripts/healthcheck.sh'
