@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           tar czf /tmp/sub2api-production-deploy.tgz -C deploy production
-          scp -i ~/.ssh/prod_key /tmp/sub2api-production-deploy.tgz "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-deploy.tgz"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'cat > /tmp/sub2api-production-deploy.tgz' < /tmp/sub2api-production-deploy.tgz
           ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'rm -rf /tmp/sub2api-production && mkdir -p /tmp/sub2api-production && tar xzf /tmp/sub2api-production-deploy.tgz -C /tmp/sub2api-production'
 
       - name: Run production init script
@@ -100,5 +100,5 @@ jobs:
             printf 'TOTP_ENCRYPTION_KEY=%s\n' "${TOTP_ENCRYPTION_KEY}"
           } > "${secrets_file}"
           chmod 600 "${secrets_file}"
-          scp -i ~/.ssh/prod_key "${secrets_file}" "${PROD_SSH_USER}@${PROD_HOST}:/tmp/sub2api-production-secrets.env"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'cat > /tmp/sub2api-production-secrets.env' < "${secrets_file}"
           ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'sudo install -m 0600 /tmp/sub2api-production-secrets.env /opt/sub2api/compose/.env.production.secrets && sudo sh -c "grep -Ev \"^(POSTGRES_PASSWORD|DATABASE_PASSWORD|REDIS_PASSWORD|JWT_SECRET|TOTP_ENCRYPTION_KEY)=\" /opt/sub2api/compose/.env.production > /opt/sub2api/compose/.env.production.tmp && cat /opt/sub2api/compose/.env.production.secrets >> /opt/sub2api/compose/.env.production.tmp && install -m 0600 /opt/sub2api/compose/.env.production.tmp /opt/sub2api/compose/.env.production && rm -f /opt/sub2api/compose/.env.production.tmp /opt/sub2api/compose/.env.production.secrets /tmp/sub2api-production-secrets.env"'

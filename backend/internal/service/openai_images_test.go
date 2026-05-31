@@ -32,6 +32,53 @@ func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
+func TestIsRetryableOpenAIImagesUpstreamError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *OpenAIImagesUpstreamError
+		want bool
+	}{
+		{
+			name: "retryable when code is server_error with upstream retry message",
+			err: &OpenAIImagesUpstreamError{
+				Code:    "server_error",
+				Message: "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 58d019a4-cfab-4c01-929c-9dd78e0931d4 in your message.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable when error type is server_error",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "server_error",
+				Message:   "temporary upstream failure",
+			},
+			want: true,
+		},
+		{
+			name: "retryable when message matches transient processing error",
+			err: &OpenAIImagesUpstreamError{
+				Message: "An error occurred while processing your request. You can retry your request.",
+			},
+			want: true,
+		},
+		{
+			name: "not retryable for user moderation block",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "image_generation_user_error",
+				Code:      "moderation_blocked",
+				Message:   "Your request was blocked by moderation.",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsRetryableOpenAIImagesUpstreamError(tt.err))
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","stream":true}`)
@@ -625,6 +672,63 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.b64_json").String())
 	require.Equal(t, "draw a cat 1", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 	require.Equal(t, "draw a cat 3", gjson.Get(rec.Body.String(), "data.2.revised_prompt").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingBillsImageToolUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"2048x2048","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_tool_usage"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000021,\"usage\":{\"input_tokens\":5302,\"output_tokens\":132},\"tool_usage\":{\"image_gen\":{\"input_tokens\":52,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":52},\"output_tokens\":3568,\"output_tokens_details\":{\"image_tokens\":3568,\"text_tokens\":0},\"total_tokens\":3620}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\",\"output_format\":\"png\",\"size\":\"2048x2048\"}]}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "2K", result.ImageSize)
+	require.Equal(t, 52, result.Usage.InputTokens)
+	require.Equal(t, 3568, result.Usage.OutputTokens)
+	require.Equal(t, 3568, result.Usage.ImageOutputTokens)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "ZmluYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.JSONEq(t, `{
+		"input_tokens":52,
+		"input_tokens_details":{"image_tokens":0,"text_tokens":52},
+		"output_tokens":3568,
+		"output_tokens_details":{"image_tokens":3568,"text_tokens":0},
+		"total_tokens":3620
+	}`, gjson.Get(rec.Body.String(), "usage").Raw)
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamModerationBlockedReturnsClientError(t *testing.T) {

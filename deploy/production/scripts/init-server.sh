@@ -52,6 +52,7 @@ install -d -m 0755 "${ROOT_DIR}/backups/postgres"
 install -d -m 0755 "${ROOT_DIR}/backups/redis"
 install -d -m 0755 "${ROOT_DIR}/backups/app"
 install -d -m 0755 "${ROOT_DIR}/logs"
+install -d -m 0755 "${ROOT_DIR}/logs/caddy"
 
 install -m 0644 "${SOURCE_DIR}/docker-compose.yml" "${ROOT_DIR}/compose/docker-compose.yml"
 install -m 0644 "${SOURCE_DIR}/Caddyfile" "${ROOT_DIR}/compose/Caddyfile"
@@ -72,5 +73,5 @@ else
 fi
 
 cd "${ROOT_DIR}/compose"
-docker compose pull caddy postgres redis || true
-docker compose up -d postgres redis caddy
+docker compose --env-file .env.production pull caddy postgres redis || true
+docker compose --env-file .env.production up -d --no-deps postgres redis
