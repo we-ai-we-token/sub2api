@@ -94,6 +94,19 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 	return "Upstream request failed"
 }
 
+func IsRetryableOpenAIImagesUpstreamError(err *OpenAIImagesUpstreamError) bool {
+	if err == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(err.Code), "server_error") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(err.ErrorType), "server_error") {
+		return true
+	}
+	return isOpenAITransientProcessingError(http.StatusBadRequest, err.Message, nil)
+}
+
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
 	if strings.TrimSpace(result.Result) != "" {
 		return strings.TrimSpace(result.OutputFormat) + "|" + strings.TrimSpace(result.Result)

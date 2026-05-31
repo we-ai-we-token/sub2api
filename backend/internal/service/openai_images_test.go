@@ -32,6 +32,53 @@ func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
+func TestIsRetryableOpenAIImagesUpstreamError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *OpenAIImagesUpstreamError
+		want bool
+	}{
+		{
+			name: "retryable when code is server_error with upstream retry message",
+			err: &OpenAIImagesUpstreamError{
+				Code:    "server_error",
+				Message: "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 58d019a4-cfab-4c01-929c-9dd78e0931d4 in your message.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable when error type is server_error",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "server_error",
+				Message:   "temporary upstream failure",
+			},
+			want: true,
+		},
+		{
+			name: "retryable when message matches transient processing error",
+			err: &OpenAIImagesUpstreamError{
+				Message: "An error occurred while processing your request. You can retry your request.",
+			},
+			want: true,
+		},
+		{
+			name: "not retryable for user moderation block",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "image_generation_user_error",
+				Code:      "moderation_blocked",
+				Message:   "Your request was blocked by moderation.",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsRetryableOpenAIImagesUpstreamError(tt.err))
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","stream":true}`)
