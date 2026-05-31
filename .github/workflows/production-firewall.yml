@@ -146,6 +146,6 @@ jobs:
           SCRIPT
 
           chmod +x /tmp/apply-production-firewall.sh
-          scp -i ~/.ssh/prod_key /tmp/apply-production-firewall.sh "${PROD_SSH_USER}@${PROD_HOST}:/tmp/apply-production-firewall.sh"
+          ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" 'cat > /tmp/apply-production-firewall.sh && chmod +x /tmp/apply-production-firewall.sh' < /tmp/apply-production-firewall.sh
           ssh -i ~/.ssh/prod_key "${PROD_SSH_USER}@${PROD_HOST}" \
             "sudo ADMIN_SSH_IPS=$(printf '%q' "${ADMIN_SSH_IPS}") CN2_GATEWAY_IPS=$(printf '%q' "${CN2_GATEWAY_IPS}") ALLOW_HTTP_80=$(printf '%q' "${ALLOW_HTTP_80:-false}") /tmp/apply-production-firewall.sh"
