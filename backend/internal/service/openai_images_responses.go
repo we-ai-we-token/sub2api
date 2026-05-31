@@ -423,6 +423,24 @@ func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponse
 	return results, createdAt, usageRaw, firstMeta, nil
 }
 
+func parseOpenAIImageToolUsage(usageRaw []byte) (OpenAIUsage, bool) {
+	if len(usageRaw) == 0 || !gjson.ValidBytes(usageRaw) {
+		return OpenAIUsage{}, false
+	}
+	usage, ok := openAIUsageFromGJSON(gjson.ParseBytes(usageRaw))
+	if !ok {
+		return OpenAIUsage{}, false
+	}
+	if usage.InputTokens == 0 &&
+		usage.OutputTokens == 0 &&
+		usage.CacheCreationInputTokens == 0 &&
+		usage.CacheReadInputTokens == 0 &&
+		usage.ImageOutputTokens == 0 {
+		return OpenAIUsage{}, false
+	}
+	return usage, true
+}
+
 func extractOpenAIImageFromResponsesOutputItemDone(payload []byte) (openAIResponsesImageResult, string, bool, error) {
 	if gjson.GetBytes(payload, "type").String() != "response.output_item.done" {
 		return openAIResponsesImageResult{}, "", false, fmt.Errorf("unexpected event type")
@@ -739,6 +757,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	if toolUsage, ok := parseOpenAIImageToolUsage(usageRaw); ok {
+		usage = toolUsage
+	}
 	if len(results) == 0 {
 		if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
 			setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
@@ -880,6 +901,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataErr = extractErr
 				processDataDone = true
 				return
+			}
+			if toolUsage, ok := parseOpenAIImageToolUsage(usageRaw); ok {
+				usage = toolUsage
 			}
 			mergeOpenAIResponsesImageMeta(&streamMeta, firstMeta)
 			finalResults := make([]openAIResponsesImageResult, 0, len(results)+len(pendingResults))
