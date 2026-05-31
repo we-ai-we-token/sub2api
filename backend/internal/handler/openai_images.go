@@ -227,6 +227,28 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			} else {
 				var imageUpstreamErr *service.OpenAIImagesUpstreamError
 				if errors.As(err, &imageUpstreamErr) {
+					if service.IsRetryableOpenAIImagesUpstreamError(imageUpstreamErr) {
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+						h.gatewayService.RecordOpenAIAccountSwitch()
+						failedAccountIDs[account.ID] = struct{}{}
+						failoverErr := &service.UpstreamFailoverError{StatusCode: imageUpstreamErr.StatusCode, ResponseBody: []byte(imageUpstreamErr.Error())}
+						lastFailoverErr = failoverErr
+						if switchCount >= maxAccountSwitches {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						switchCount++
+						reqLog.Warn("openai.images.upstream_retryable_error_switching",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", imageUpstreamErr.StatusCode),
+							zap.String("error_type", imageUpstreamErr.ErrorType),
+							zap.String("error_code", imageUpstreamErr.Code),
+							zap.Int("switch_count", switchCount),
+							zap.Int("max_switches", maxAccountSwitches),
+							zap.Error(err),
+						)
+						continue
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 					reqLog.Warn("openai.images.upstream_user_error",
 						zap.Int64("account_id", account.ID),
