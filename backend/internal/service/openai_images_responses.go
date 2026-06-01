@@ -463,7 +463,7 @@ func (s *OpenAIGatewayService) ForwardImagesOAuthFanout(
 					break
 				}
 				if selection == nil || selection.Account == nil {
-					lastErr = fmt.Errorf("No available compatible accounts")
+					lastErr = fmt.Errorf("no available compatible accounts")
 					break
 				}
 				account := selection.Account
