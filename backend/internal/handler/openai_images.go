@@ -17,10 +17,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func openAIImagesSchedulerSessionHash(c *gin.Context, body []byte) string {
-	return ""
-}
-
 // Images handles OpenAI Images API requests.
 // POST /v1/images/generations
 // POST /v1/images/edits
@@ -137,7 +133,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 
-	sessionHash := openAIImagesSchedulerSessionHash(c, body)
+	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
