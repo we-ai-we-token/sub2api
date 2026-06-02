@@ -188,21 +188,25 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		reqLog.Debug("openai.images.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
-		if !acquired {
-			return
-		}
-
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		result, err := func() (*service.OpenAIForwardResult, error) {
-			defer func() {
-				if accountReleaseFunc != nil {
-					accountReleaseFunc()
-				}
+		var result *service.OpenAIForwardResult
+		if account.Type == service.AccountTypeOAuth && parsed.N > 1 && !parsed.Stream {
+			result, err = h.gatewayService.ForwardImagesOAuthFanout(c.Request.Context(), c, apiKey.GroupID, parsed, channelMapping.MappedModel, failedAccountIDs)
+		} else {
+			accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
+			if !acquired {
+				return
+			}
+			result, err = func() (*service.OpenAIForwardResult, error) {
+				defer func() {
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+				}()
+				return h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel)
 			}()
-			return h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel)
-		}()
+		}
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -223,6 +227,28 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			} else {
 				var imageUpstreamErr *service.OpenAIImagesUpstreamError
 				if errors.As(err, &imageUpstreamErr) {
+					if service.IsRetryableOpenAIImagesUpstreamError(imageUpstreamErr) {
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+						h.gatewayService.RecordOpenAIAccountSwitch()
+						failedAccountIDs[account.ID] = struct{}{}
+						failoverErr := &service.UpstreamFailoverError{StatusCode: imageUpstreamErr.StatusCode, ResponseBody: []byte(imageUpstreamErr.Error())}
+						lastFailoverErr = failoverErr
+						if switchCount >= maxAccountSwitches {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						switchCount++
+						reqLog.Warn("openai.images.upstream_retryable_error_switching",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", imageUpstreamErr.StatusCode),
+							zap.String("error_type", imageUpstreamErr.ErrorType),
+							zap.String("error_code", imageUpstreamErr.Code),
+							zap.Int("switch_count", switchCount),
+							zap.Int("max_switches", maxAccountSwitches),
+							zap.Error(err),
+						)
+						continue
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 					reqLog.Warn("openai.images.upstream_user_error",
 						zap.Int64("account_id", account.ID),
