@@ -305,7 +305,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					continue
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				wroteFallback := false
+				if !shouldSkipOpenAIImagesForwardFallback(c, streamStarted) {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				}
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
@@ -373,6 +376,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		)
 		return
 	}
+}
+
+func shouldSkipOpenAIImagesForwardFallback(c *gin.Context, streamStarted bool) bool {
+	if streamStarted || c == nil || c.Writer == nil {
+		return false
+	}
+	return c.Writer.Written()
 }
 
 func isMultipartImagesContentType(contentType string) bool {
