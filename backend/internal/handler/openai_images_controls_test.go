@@ -60,3 +60,32 @@ func TestOpenAIGatewayHandlerImages_DisabledGroupRejectsBeforeScheduling(t *test
 	require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 	require.Contains(t, rec.Body.String(), service.ImageGenerationPermissionMessage())
 }
+
+func TestShouldSkipOpenAIImagesForwardFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	require.False(t, shouldSkipOpenAIImagesForwardFallback(nil, false))
+
+	t.Run("fresh non-streaming response needs fallback", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+
+		require.False(t, shouldSkipOpenAIImagesForwardFallback(c, false))
+	})
+
+	t.Run("written non-streaming response skips fallback", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "upstream detail"}})
+
+		require.True(t, shouldSkipOpenAIImagesForwardFallback(c, false))
+	})
+
+	t.Run("streaming response still appends terminal error", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Writer.WriteHeader(http.StatusOK)
+
+		require.False(t, shouldSkipOpenAIImagesForwardFallback(c, true))
+	})
+}
