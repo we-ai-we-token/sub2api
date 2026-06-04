@@ -21,10 +21,10 @@
 
 		transport http {
 			dial_timeout 10s
-			read_timeout 600s
-			write_timeout 600s
+			read_timeout 1000s
+			write_timeout 1000s
 			keepalive 120s
-			keepalive_idle_conns 256
+			keepalive_idle_conns 1024
 			read_buffer 16KB
 			write_buffer 16KB
 			compression off
