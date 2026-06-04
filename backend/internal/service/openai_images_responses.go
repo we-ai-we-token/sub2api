@@ -1407,7 +1407,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	}
 	output, err := s.forwardOpenAIImagesOAuthOnce(ctx, c, account, parsed, channelMappedModel)
 	if err != nil {
-		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok {
+		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok && !IsRetryableOpenAIImagesUpstreamError(upstreamErr) {
 			writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
 		}
 		return nil, err
