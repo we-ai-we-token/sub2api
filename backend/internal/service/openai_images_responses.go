@@ -1070,7 +1070,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 ) (OpenAIUsage, int, []string, error) {
 	output, err := s.handleOpenAIImagesOAuthNonStreamingOutput(resp, c, responseFormat, fallbackModel, retryableEmptyOutput)
 	if err != nil {
-		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok {
+		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok && !IsRetryableOpenAIImagesUpstreamError(upstreamErr) && !c.Writer.Written() {
 			writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
 		}
 		if output != nil {
