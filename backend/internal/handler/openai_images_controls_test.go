@@ -27,7 +27,7 @@ func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
 	state.remember(firstFailover)
 	retry, delay := state.consumeForSameAccountRetry(firstErr, 500*time.Millisecond)
 	require.True(t, retry)
-	require.Equal(t, 15*time.Millisecond, delay)
+	require.Equal(t, 500*time.Millisecond, delay)
 	require.Nil(t, state.lastFailoverErr, "retry must discard the previous error before the next attempt")
 	require.Equal(t, 1, state.cyclesStarted)
 
@@ -47,7 +47,7 @@ func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
 	state.remember(secondFailover)
 	retry, delay = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
 	require.True(t, retry)
-	require.Equal(t, 20*time.Millisecond, delay)
+	require.Equal(t, 500*time.Millisecond, delay)
 	require.Equal(t, 2, state.cyclesStarted)
 
 	state.remember(secondFailover)
@@ -59,7 +59,7 @@ func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
 	state.remember(secondFailover)
 	retry, delay = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
 	require.True(t, retry)
-	require.Equal(t, 20*time.Millisecond, delay)
+	require.Equal(t, 500*time.Millisecond, delay)
 	require.Equal(t, 3, state.cyclesStarted)
 
 	state.remember(secondFailover)
@@ -68,7 +68,7 @@ func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
 	require.Same(t, secondFailover, state.lastFailoverErr, "exhausted retry keeps final error for downstream response")
 }
 
-func TestOpenAIImagesTransientRetryStateAllowsThreeSameAccountThenSwitchCycles(t *testing.T) {
+func TestOpenAIImagesTransientRetryStateAllowsThreeRetryCycles(t *testing.T) {
 	state := newOpenAIImagesInputImagesRetryState(3)
 	err := &service.OpenAIImagesUpstreamError{
 		StatusCode: http.StatusBadGateway,
@@ -85,15 +85,11 @@ func TestOpenAIImagesTransientRetryStateAllowsThreeSameAccountThenSwitchCycles(t
 		require.Equal(t, 500*time.Millisecond, delay)
 		require.Nil(t, state.lastFailoverErr)
 		require.Equal(t, i, state.cyclesStarted)
-		require.True(t, state.consumeForAccountSwitch(err))
-		require.Nil(t, state.lastFailoverErr)
 	}
 
 	state.remember(failover)
 	retry, _ := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
 	require.False(t, retry)
-	require.Same(t, failover, state.lastFailoverErr)
-	require.False(t, state.consumeForAccountSwitch(err))
 	require.Same(t, failover, state.lastFailoverErr)
 }
 

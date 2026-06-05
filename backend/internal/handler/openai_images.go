@@ -38,7 +38,7 @@ func (s *openAIImagesInputImagesRetryState) remember(err *service.UpstreamFailov
 	s.lastFailoverErr = err
 }
 
-func (s *openAIImagesInputImagesRetryState) consumeForSameAccountRetry(err *service.OpenAIImagesUpstreamError, fallbackDelay time.Duration) (bool, time.Duration) {
+func (s *openAIImagesInputImagesRetryState) consumeForSameAccountRetry(err *service.OpenAIImagesUpstreamError, retryDelay time.Duration) (bool, time.Duration) {
 	if !service.IsOpenAIImagesSpecialTransientRetryError(err) {
 		return false, 0
 	}
@@ -47,10 +47,7 @@ func (s *openAIImagesInputImagesRetryState) consumeForSameAccountRetry(err *serv
 	}
 	s.cyclesStarted++
 	s.lastFailoverErr = nil
-	if delay := service.OpenAIImagesRetryDelayFromMessage(err.Message); delay > 0 {
-		return true, delay
-	}
-	return true, fallbackDelay
+	return true, retryDelay
 }
 
 func (s *openAIImagesInputImagesRetryState) consumeForAccountSwitch(err *service.OpenAIImagesUpstreamError) bool {
@@ -303,7 +300,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						inputImagesRetryState.remember(failoverErr)
 						if retry, retryDelay := inputImagesRetryState.consumeForSameAccountRetry(imageUpstreamErr, sameAccountRetryDelay); retry {
 							lastFailoverErr = nil
-							reqLog.Warn("openai.images.input_images_rate_limit_same_account_retry",
+							reqLog.Warn("openai.images.transient_retry",
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", imageUpstreamErr.StatusCode),
 								zap.String("error_type", imageUpstreamErr.ErrorType),
@@ -319,28 +316,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 							}
 							continue
 						}
-						if inputImagesRetryState.consumeForAccountSwitch(imageUpstreamErr) {
-							lastFailoverErr = nil
-							h.gatewayService.RecordOpenAIAccountSwitch()
-							failedAccountIDs[account.ID] = struct{}{}
-							if switchCount >= maxAccountSwitches {
-								h.handleFailoverExhausted(c, failoverErr, streamStarted)
-								return
-							}
-							switchCount++
-							reqLog.Warn("openai.images.input_images_rate_limit_switching",
-								zap.Int64("account_id", account.ID),
-								zap.Int("upstream_status", imageUpstreamErr.StatusCode),
-								zap.String("error_type", imageUpstreamErr.ErrorType),
-								zap.String("error_code", imageUpstreamErr.Code),
-								zap.Int("switch_count", switchCount),
-								zap.Int("max_switches", maxAccountSwitches),
-								zap.Int("retry_cycle", inputImagesRetryState.cyclesStarted),
-								zap.Int("max_retry_cycles", inputImagesRetryState.maxCycles),
-							)
-							continue
-						}
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
 					}
+
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
