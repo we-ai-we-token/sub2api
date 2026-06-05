@@ -17,6 +17,54 @@ import (
 	"go.uber.org/zap"
 )
 
+const openAIImagesTransientRetryMaxCycles = 3
+
+type openAIImagesInputImagesRetryState struct {
+	maxCycles        int
+	cyclesStarted    int
+	switchesConsumed int
+	lastFailoverErr  *service.UpstreamFailoverError
+}
+
+func shouldUseOpenAIImagesSpecialTransientRetry(err *service.OpenAIImagesUpstreamError) bool {
+	return service.IsOpenAIImagesSpecialTransientRetryError(err)
+}
+
+func newOpenAIImagesInputImagesRetryState(maxCycles int) *openAIImagesInputImagesRetryState {
+	return &openAIImagesInputImagesRetryState{maxCycles: maxCycles}
+}
+
+func (s *openAIImagesInputImagesRetryState) remember(err *service.UpstreamFailoverError) {
+	s.lastFailoverErr = err
+}
+
+func (s *openAIImagesInputImagesRetryState) consumeForSameAccountRetry(err *service.OpenAIImagesUpstreamError, fallbackDelay time.Duration) (bool, time.Duration) {
+	if !service.IsOpenAIImagesSpecialTransientRetryError(err) {
+		return false, 0
+	}
+	if s.cyclesStarted >= s.maxCycles {
+		return false, 0
+	}
+	s.cyclesStarted++
+	s.lastFailoverErr = nil
+	if delay := service.OpenAIImagesRetryDelayFromMessage(err.Message); delay > 0 {
+		return true, delay
+	}
+	return true, fallbackDelay
+}
+
+func (s *openAIImagesInputImagesRetryState) consumeForAccountSwitch(err *service.OpenAIImagesUpstreamError) bool {
+	if !service.IsOpenAIImagesSpecialTransientRetryError(err) {
+		return false
+	}
+	if s.cyclesStarted == 0 || s.switchesConsumed >= s.cyclesStarted || s.switchesConsumed >= s.maxCycles {
+		return false
+	}
+	s.switchesConsumed++
+	s.lastFailoverErr = nil
+	return true
+}
+
 func openAIImagesSchedulerSessionHash(c *gin.Context, body []byte) string {
 	return ""
 }
@@ -143,6 +191,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	inputImagesRetryState := newOpenAIImagesInputImagesRetryState(openAIImagesTransientRetryMaxCycles)
 	var lastFailoverErr *service.UpstreamFailoverError
 
 	for {
@@ -167,6 +216,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+			} else if inputImagesRetryState.lastFailoverErr != nil {
+				h.handleFailoverExhausted(c, inputImagesRetryState.lastFailoverErr, streamStarted)
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
@@ -230,29 +281,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				)
 			} else {
 				var imageUpstreamErr *service.OpenAIImagesUpstreamError
-				if errors.As(err, &imageUpstreamErr) {
-					if service.IsRetryableOpenAIImagesUpstreamError(imageUpstreamErr) {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-						h.gatewayService.RecordOpenAIAccountSwitch()
-						failedAccountIDs[account.ID] = struct{}{}
-						failoverErr := &service.UpstreamFailoverError{StatusCode: imageUpstreamErr.StatusCode, ResponseBody: []byte(imageUpstreamErr.Error())}
-						lastFailoverErr = failoverErr
-						if switchCount >= maxAccountSwitches {
-							h.handleFailoverExhausted(c, failoverErr, streamStarted)
-							return
-						}
-						switchCount++
-						reqLog.Warn("openai.images.upstream_retryable_error_switching",
-							zap.Int64("account_id", account.ID),
-							zap.Int("upstream_status", imageUpstreamErr.StatusCode),
-							zap.String("error_type", imageUpstreamErr.ErrorType),
-							zap.String("error_code", imageUpstreamErr.Code),
-							zap.Int("switch_count", switchCount),
-							zap.Int("max_switches", maxAccountSwitches),
-							zap.Error(err),
-						)
-						continue
-					}
+				if errors.As(err, &imageUpstreamErr) && !service.IsRetryableOpenAIImagesUpstreamError(imageUpstreamErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 					reqLog.Warn("openai.images.upstream_user_error",
 						zap.Int64("account_id", account.ID),
@@ -264,8 +293,54 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					return
 				}
 				var failoverErr *service.UpstreamFailoverError
-				if errors.As(err, &failoverErr) {
+				if errors.As(err, &failoverErr) || imageUpstreamErr != nil {
+					if failoverErr == nil {
+						failoverErr = &service.UpstreamFailoverError{StatusCode: imageUpstreamErr.StatusCode, ResponseBody: []byte(imageUpstreamErr.Error())}
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					lastFailoverErr = failoverErr
+					if imageUpstreamErr != nil && shouldUseOpenAIImagesSpecialTransientRetry(imageUpstreamErr) {
+						inputImagesRetryState.remember(failoverErr)
+						if retry, retryDelay := inputImagesRetryState.consumeForSameAccountRetry(imageUpstreamErr, sameAccountRetryDelay); retry {
+							lastFailoverErr = nil
+							reqLog.Warn("openai.images.input_images_rate_limit_same_account_retry",
+								zap.Int64("account_id", account.ID),
+								zap.Int("upstream_status", imageUpstreamErr.StatusCode),
+								zap.String("error_type", imageUpstreamErr.ErrorType),
+								zap.String("error_code", imageUpstreamErr.Code),
+								zap.Duration("retry_delay", retryDelay),
+								zap.Int("retry_cycle", inputImagesRetryState.cyclesStarted),
+								zap.Int("max_retry_cycles", inputImagesRetryState.maxCycles),
+							)
+							select {
+							case <-c.Request.Context().Done():
+								return
+							case <-time.After(retryDelay):
+							}
+							continue
+						}
+						if inputImagesRetryState.consumeForAccountSwitch(imageUpstreamErr) {
+							lastFailoverErr = nil
+							h.gatewayService.RecordOpenAIAccountSwitch()
+							failedAccountIDs[account.ID] = struct{}{}
+							if switchCount >= maxAccountSwitches {
+								h.handleFailoverExhausted(c, failoverErr, streamStarted)
+								return
+							}
+							switchCount++
+							reqLog.Warn("openai.images.input_images_rate_limit_switching",
+								zap.Int64("account_id", account.ID),
+								zap.Int("upstream_status", imageUpstreamErr.StatusCode),
+								zap.String("error_type", imageUpstreamErr.ErrorType),
+								zap.String("error_code", imageUpstreamErr.Code),
+								zap.Int("switch_count", switchCount),
+								zap.Int("max_switches", maxAccountSwitches),
+								zap.Int("retry_cycle", inputImagesRetryState.cyclesStarted),
+								zap.Int("max_retry_cycles", inputImagesRetryState.maxCycles),
+							)
+							continue
+						}
+					}
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {

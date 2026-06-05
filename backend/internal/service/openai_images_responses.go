@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -108,9 +110,39 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 	return "Upstream request failed"
 }
 
+func IsOpenAIImagesInputImagesRateLimitError(err *OpenAIImagesUpstreamError) bool {
+	if err == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(err.Code), "rate_limit_exceeded") {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(err.ErrorType), "input-images") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Message), "input-images per min")
+}
+
+func IsOpenAIImagesOverloadedTransientError(err *OpenAIImagesUpstreamError) bool {
+	if err == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(err.Code), "server_is_overloaded") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(err.ErrorType), "service_unavailable_error")
+}
+
+func IsOpenAIImagesSpecialTransientRetryError(err *OpenAIImagesUpstreamError) bool {
+	return IsOpenAIImagesInputImagesRateLimitError(err) || IsOpenAIImagesOverloadedTransientError(err)
+}
+
 func IsRetryableOpenAIImagesUpstreamError(err *OpenAIImagesUpstreamError) bool {
 	if err == nil {
 		return false
+	}
+	if IsOpenAIImagesSpecialTransientRetryError(err) {
+		return true
 	}
 	if strings.EqualFold(strings.TrimSpace(err.Code), "server_error") {
 		return true
@@ -119,6 +151,27 @@ func IsRetryableOpenAIImagesUpstreamError(err *OpenAIImagesUpstreamError) bool {
 		return true
 	}
 	return isOpenAITransientProcessingError(http.StatusBadRequest, err.Message, nil)
+}
+
+var openAIImagesRetryDelayPattern = regexp.MustCompile(`(?i)try again in\s+(\d+)\s*(ms|s|sec|secs|second|seconds)\b`)
+
+func OpenAIImagesRetryDelayFromMessage(message string) time.Duration {
+	matches := openAIImagesRetryDelayPattern.FindStringSubmatch(message)
+	if len(matches) != 3 {
+		return 0
+	}
+	value, err := strconv.Atoi(matches[1])
+	if err != nil || value <= 0 {
+		return 0
+	}
+	switch strings.ToLower(matches[2]) {
+	case "ms":
+		return time.Duration(value) * time.Millisecond
+	case "s", "sec", "secs", "second", "seconds":
+		return time.Duration(value) * time.Second
+	default:
+		return 0
+	}
 }
 
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
@@ -978,6 +1031,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingOutput(
 	if len(results) == 0 {
 		if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
 			setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
+			if !IsRetryableOpenAIImagesUpstreamError(upstreamErr) {
+				writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
+			}
 			return nil, upstreamErr
 		}
 		if foundFinal && retryableEmptyOutput {
@@ -1116,7 +1172,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				createdAt,
 				partialMeta,
 			)
-			s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+			if s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload) && imageCount == 0 {
+				imageCount = 1
+			}
 		case "response.output_item.done":
 			img, itemID, ok, extractErr := extractOpenAIImageFromResponsesOutputItemDone(dataBytes)
 			if extractErr != nil {
@@ -1187,7 +1245,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			processDataDone = true
 		case "error", "response.failed":
 			if upstreamErr := openAIImagesUpstreamErrorFromSSEPayload(dataBytes); upstreamErr != nil {
-				if !clientDisconnected {
+				if !clientDisconnected && !IsRetryableOpenAIImagesUpstreamError(upstreamErr) {
 					s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBodyFromUpstream(upstreamErr))
 				}
 				setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")

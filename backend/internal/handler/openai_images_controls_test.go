@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,6 +13,125 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
+	state := newOpenAIImagesInputImagesRetryState(3)
+
+	firstErr := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "input-images",
+		Code:       "rate_limit_exceeded",
+		Message:    "Please try again in 15ms.",
+	}
+	firstFailover := &service.UpstreamFailoverError{StatusCode: firstErr.StatusCode, ResponseBody: []byte(firstErr.Error())}
+	state.remember(firstFailover)
+	retry, delay := state.consumeForSameAccountRetry(firstErr, 500*time.Millisecond)
+	require.True(t, retry)
+	require.Equal(t, 15*time.Millisecond, delay)
+	require.Nil(t, state.lastFailoverErr, "retry must discard the previous error before the next attempt")
+	require.Equal(t, 1, state.cyclesStarted)
+
+	secondErr := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "input-images",
+		Code:       "rate_limit_exceeded",
+		Message:    "Please try again in 20ms.",
+	}
+	secondFailover := &service.UpstreamFailoverError{StatusCode: secondErr.StatusCode, ResponseBody: []byte(secondErr.Error())}
+	state.remember(secondFailover)
+	switchAccount := state.consumeForAccountSwitch(secondErr)
+	require.True(t, switchAccount)
+	require.Nil(t, state.lastFailoverErr, "switch retry must discard the previous error before selecting another account")
+	require.Equal(t, 1, state.cyclesStarted)
+
+	state.remember(secondFailover)
+	retry, delay = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
+	require.True(t, retry)
+	require.Equal(t, 20*time.Millisecond, delay)
+	require.Equal(t, 2, state.cyclesStarted)
+
+	state.remember(secondFailover)
+	switchAccount = state.consumeForAccountSwitch(secondErr)
+	require.True(t, switchAccount)
+	require.Nil(t, state.lastFailoverErr)
+	require.Equal(t, 2, state.cyclesStarted)
+
+	state.remember(secondFailover)
+	retry, delay = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
+	require.True(t, retry)
+	require.Equal(t, 20*time.Millisecond, delay)
+	require.Equal(t, 3, state.cyclesStarted)
+
+	state.remember(secondFailover)
+	retry, _ = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
+	require.False(t, retry)
+	require.Same(t, secondFailover, state.lastFailoverErr, "exhausted retry keeps final error for downstream response")
+}
+
+func TestOpenAIImagesTransientRetryStateAllowsThreeSameAccountThenSwitchCycles(t *testing.T) {
+	state := newOpenAIImagesInputImagesRetryState(3)
+	err := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusBadGateway,
+		ErrorType:  "service_unavailable_error",
+		Code:       "server_is_overloaded",
+		Message:    "Our servers are currently overloaded. Please try again later.",
+	}
+	failover := &service.UpstreamFailoverError{StatusCode: err.StatusCode, ResponseBody: []byte(err.Error())}
+
+	for i := 1; i <= 3; i++ {
+		state.remember(failover)
+		retry, delay := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
+		require.True(t, retry)
+		require.Equal(t, 500*time.Millisecond, delay)
+		require.Nil(t, state.lastFailoverErr)
+		require.Equal(t, i, state.cyclesStarted)
+		require.True(t, state.consumeForAccountSwitch(err))
+		require.Nil(t, state.lastFailoverErr)
+	}
+
+	state.remember(failover)
+	retry, _ := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
+	require.False(t, retry)
+	require.Same(t, failover, state.lastFailoverErr)
+	require.False(t, state.consumeForAccountSwitch(err))
+	require.Same(t, failover, state.lastFailoverErr)
+}
+
+func TestOpenAIImagesInputImagesRetryStateIgnoresOtherErrors(t *testing.T) {
+	state := newOpenAIImagesInputImagesRetryState(3)
+	err := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "requests",
+		Code:       "rate_limit_exceeded",
+		Message:    "Rate limit reached on requests per min.",
+	}
+	failover := &service.UpstreamFailoverError{StatusCode: err.StatusCode, ResponseBody: []byte(err.Error())}
+	state.remember(failover)
+
+	retry, _ := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
+	require.False(t, retry)
+	require.Same(t, failover, state.lastFailoverErr)
+	require.False(t, state.consumeForAccountSwitch(err))
+	require.Same(t, failover, state.lastFailoverErr)
+}
+
+func TestOpenAIImagesSpecialTransientRetryGate(t *testing.T) {
+	overloadedErr := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusBadGateway,
+		ErrorType:  "service_unavailable_error",
+		Code:       "server_is_overloaded",
+		Message:    "Our servers are currently overloaded. Please try again later.",
+	}
+	unrelatedErr := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "requests",
+		Code:       "rate_limit_exceeded",
+		Message:    "Rate limit reached on requests per min.",
+	}
+
+	require.True(t, shouldUseOpenAIImagesSpecialTransientRetry(overloadedErr))
+	require.False(t, shouldUseOpenAIImagesSpecialTransientRetry(unrelatedErr))
+}
 
 func TestOpenAIImagesSchedulerSessionHashIgnoresExplicitSessionSignals(t *testing.T) {
 	gin.SetMode(gin.TestMode)

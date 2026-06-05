@@ -12,12 +12,158 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestIsRetryableOpenAIImagesUpstreamError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *OpenAIImagesUpstreamError
+		want bool
+	}{
+		{
+			name: "retryable for server error code",
+			err: &OpenAIImagesUpstreamError{
+				Code: "server_error",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for server error type",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "server_error",
+				Message:   "temporary upstream failure",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for transient processing error",
+			err: &OpenAIImagesUpstreamError{
+				ErrorType: "image_generation_error",
+				Message:   "An error occurred while processing your request. Please try again.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for input images rate limit type",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusTooManyRequests,
+				ErrorType:  "input-images",
+				Code:       "rate_limit_exceeded",
+				Message:    "Rate limit reached for gpt-image-2-codex on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for parsed input images rate limit with upstream default status",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadGateway,
+				ErrorType:  "input-images",
+				Code:       "rate_limit_exceeded",
+				Message:    "Rate limit reached for gpt-image-2-codex on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for overloaded code",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadGateway,
+				ErrorType:  "service_unavailable_error",
+				Code:       "server_is_overloaded",
+				Message:    "Our servers are currently overloaded. Please try again later.",
+			},
+			want: true,
+		},
+		{
+			name: "retryable for overloaded type",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadGateway,
+				ErrorType:  "service_unavailable_error",
+				Message:    "Our servers are currently overloaded. Please try again later.",
+			},
+			want: true,
+		},
+		{
+			name: "not special retryable for unrelated service unavailable code",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadGateway,
+				ErrorType:  "upstream_error",
+				Code:       "service_unavailable",
+				Message:    "service unavailable",
+			},
+			want: false,
+		},
+		{
+			name: "retryable for input images rate limit message fallback",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusTooManyRequests,
+				Code:       "rate_limit_exceeded",
+				Message:    "Rate limit reached for gpt-image-2-codex on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms.",
+			},
+			want: true,
+		},
+		{
+			name: "not retryable for unrelated rate limit",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusTooManyRequests,
+				ErrorType:  "requests",
+				Code:       "rate_limit_exceeded",
+				Message:    "Rate limit reached on requests per min.",
+			},
+			want: false,
+		},
+		{
+			name: "not retryable for nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsRetryableOpenAIImagesUpstreamError(tt.err))
+		})
+	}
+}
+
+func TestIsOpenAIImagesSpecialTransientRetryError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *OpenAIImagesUpstreamError
+		want bool
+	}{
+		{name: "input images rate limit", err: &OpenAIImagesUpstreamError{Code: "rate_limit_exceeded", ErrorType: "input-images", Message: "Rate limit reached on input-images per min. Please try again in 15ms."}, want: true},
+		{name: "server overloaded code", err: &OpenAIImagesUpstreamError{Code: "server_is_overloaded", ErrorType: "service_unavailable_error", Message: "Our servers are currently overloaded. Please try again later."}, want: true},
+		{name: "unrelated rate limit", err: &OpenAIImagesUpstreamError{Code: "rate_limit_exceeded", ErrorType: "requests", Message: "Rate limit reached on requests per min."}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsOpenAIImagesSpecialTransientRetryError(tt.err))
+		})
+	}
+}
+
+func TestOpenAIImagesRetryDelayFromMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want time.Duration
+	}{
+		{name: "milliseconds hint", msg: "Please try again in 15ms.", want: 15 * time.Millisecond},
+		{name: "seconds hint", msg: "Please try again in 2s.", want: 2 * time.Second},
+		{name: "no hint", msg: "Rate limit reached.", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, OpenAIImagesRetryDelayFromMessage(tt.msg))
+		})
+	}
+}
 
 type failingOpenAIImageWriter struct {
 	gin.ResponseWriter
@@ -31,53 +177,6 @@ func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
 	}
 	w.writes++
 	return w.ResponseWriter.Write(p)
-}
-
-func TestIsRetryableOpenAIImagesUpstreamError(t *testing.T) {
-	tests := []struct {
-		name string
-		err  *OpenAIImagesUpstreamError
-		want bool
-	}{
-		{
-			name: "retryable when code is server_error with upstream retry message",
-			err: &OpenAIImagesUpstreamError{
-				Code:    "server_error",
-				Message: "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 58d019a4-cfab-4c01-929c-9dd78e0931d4 in your message.",
-			},
-			want: true,
-		},
-		{
-			name: "retryable when error type is server_error",
-			err: &OpenAIImagesUpstreamError{
-				ErrorType: "server_error",
-				Message:   "temporary upstream failure",
-			},
-			want: true,
-		},
-		{
-			name: "retryable when message matches transient processing error",
-			err: &OpenAIImagesUpstreamError{
-				Message: "An error occurred while processing your request. You can retry your request.",
-			},
-			want: true,
-		},
-		{
-			name: "not retryable for user moderation block",
-			err: &OpenAIImagesUpstreamError{
-				ErrorType: "image_generation_user_error",
-				Code:      "moderation_blocked",
-				Message:   "Your request was blocked by moderation.",
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, IsRetryableOpenAIImagesUpstreamError(tt.err))
-		})
-	}
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
@@ -1980,6 +2079,200 @@ func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingRetriesEmptyComplete
 	require.True(t, ok)
 	require.Equal(t, 2, recorder.calls)
 	require.Equal(t, "bm9uc3RyZWFt", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamServerErrorIsRetryableWithoutWritingClientError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_retryable_server_error"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"code\":\"server_error\",\"message\":\"server overloaded\"}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       14,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.False(t, rec.Code != http.StatusOK && rec.Body.Len() > 0, "retryable upstream error must not be written to the client before handler retry")
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamInputImagesRateLimitIsRetryableWithoutWritingClientError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw cat","stream":true}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42})
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_input_images_limit"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000020}}\n\n" +
+					"data: {\"type\":\"error\",\"error\":{\"type\":\"input-images\",\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached for gpt-image-2-codex on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms.\"}}\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.True(t, IsOpenAIImagesInputImagesRateLimitError(upstreamErr))
+	require.True(t, IsRetryableOpenAIImagesUpstreamError(upstreamErr))
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamOverloadedIsRetryableWithoutWritingClientError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw cat","stream":true}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42})
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_overloaded"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000020}}\n\n" +
+					"data: {\"type\":\"error\",\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.True(t, IsOpenAIImagesSpecialTransientRetryError(upstreamErr))
+	require.True(t, IsRetryableOpenAIImagesUpstreamError(upstreamErr))
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamInputImagesRateLimitAfterPartialOutputReturnsResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw cat","stream":true}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42})
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_input_images_limit_after_partial"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000020}}\n\n" +
+					"data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\",\"partial_image_index\":0,\"output_format\":\"png\"}\n\n" +
+					"data: {\"type\":\"error\",\"error\":{\"type\":\"input-images\",\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached for gpt-image-2-codex on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms.\"}}\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.True(t, IsOpenAIImagesInputImagesRateLimitError(upstreamErr))
+	require.True(t, IsRetryableOpenAIImagesUpstreamError(upstreamErr))
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), "image_generation.partial_image")
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDisconnect(t *testing.T) {
