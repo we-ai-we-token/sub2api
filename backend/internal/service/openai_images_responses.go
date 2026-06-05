@@ -134,7 +134,12 @@ func IsOpenAIImagesOverloadedTransientError(err *OpenAIImagesUpstreamError) bool
 }
 
 func IsOpenAIImagesSpecialTransientRetryError(err *OpenAIImagesUpstreamError) bool {
-	return IsOpenAIImagesInputImagesRateLimitError(err) || IsOpenAIImagesOverloadedTransientError(err)
+	if err == nil {
+		return false
+	}
+	return IsOpenAIImagesInputImagesRateLimitError(err) ||
+		IsOpenAIImagesOverloadedTransientError(err) ||
+		isOpenAITransientProcessingError(http.StatusBadRequest, err.Message, nil)
 }
 
 func IsRetryableOpenAIImagesUpstreamError(err *OpenAIImagesUpstreamError) bool {

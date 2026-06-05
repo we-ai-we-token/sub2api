@@ -139,6 +139,7 @@ func TestIsOpenAIImagesSpecialTransientRetryError(t *testing.T) {
 	}{
 		{name: "input images rate limit", err: &OpenAIImagesUpstreamError{Code: "rate_limit_exceeded", ErrorType: "input-images", Message: "Rate limit reached on input-images per min. Please try again in 15ms."}, want: true},
 		{name: "server overloaded code", err: &OpenAIImagesUpstreamError{Code: "server_is_overloaded", ErrorType: "service_unavailable_error", Message: "Our servers are currently overloaded. Please try again later."}, want: true},
+		{name: "transient processing message", err: &OpenAIImagesUpstreamError{Code: "server_error", ErrorType: "server_error", Message: "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 2fc78263-810e-4cf6-8eeb-1fca49a630a6 in your message."}, want: true},
 		{name: "unrelated rate limit", err: &OpenAIImagesUpstreamError{Code: "rate_limit_exceeded", ErrorType: "requests", Message: "Rate limit reached on requests per min."}, want: false},
 	}
 	for _, tt := range tests {
