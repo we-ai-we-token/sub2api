@@ -243,6 +243,90 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_OpenAIImagesEmptyOutputWritesZeroCostUsageLog(t *testing.T) {
+	groupID := int64(8)
+	groupRate := 0.08
+	imageRate := 1.0
+	imagePrice4K := 0.05
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:      "resp_image_empty_output_usage",
+			Model:          "gpt-image-2",
+			ImageCount:     0,
+			ImageSize:      "4K",
+			ImageInputSize: "2560x1440",
+			Usage: OpenAIUsage{
+				InputTokens:          3903,
+				OutputTokens:         694,
+				CacheReadInputTokens: 2688,
+			},
+			Duration: 271973 * time.Millisecond,
+		},
+		APIKey: &APIKey{
+			ID:      26,
+			Quota:   100,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       groupRate,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  imageRate,
+				ImagePrice4K:         &imagePrice4K,
+			},
+		},
+		User:             &User{ID: 4},
+		Account:          &Account{ID: 1382, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		InboundEndpoint:  " /v1/images/edits ",
+		UpstreamEndpoint: " /v1/images/edits ",
+		APIKeyService:    quotaSvc,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+	require.Equal(t, 0, quotaSvc.quotaCalls)
+	require.Equal(t, 0, quotaSvc.rateLimitCalls)
+
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "resp_image_empty_output_usage", usageRepo.lastLog.RequestID)
+	require.Equal(t, "gpt-image-2", usageRepo.lastLog.Model)
+	require.Equal(t, 1215, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 694, usageRepo.lastLog.OutputTokens)
+	require.Equal(t, 2688, usageRepo.lastLog.CacheReadTokens)
+	require.Zero(t, usageRepo.lastLog.ImageOutputTokens)
+	require.Zero(t, usageRepo.lastLog.ImageCount)
+	require.NotNil(t, usageRepo.lastLog.ImageSize)
+	require.Equal(t, "4K", *usageRepo.lastLog.ImageSize)
+	require.NotNil(t, usageRepo.lastLog.ImageInputSize)
+	require.Equal(t, "2560x1440", *usageRepo.lastLog.ImageInputSize)
+	require.Zero(t, usageRepo.lastLog.InputCost)
+	require.Zero(t, usageRepo.lastLog.OutputCost)
+	require.Zero(t, usageRepo.lastLog.CacheReadCost)
+	require.Zero(t, usageRepo.lastLog.ImageOutputCost)
+	require.Zero(t, usageRepo.lastLog.TotalCost)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.InDelta(t, imageRate, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Zero(t, billingRepo.lastCmd.BalanceCost)
+	require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
+	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
