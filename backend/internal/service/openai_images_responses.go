@@ -1190,11 +1190,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingOutput(
 			}
 			return nil, upstreamErr
 		}
-		if foundFinal && retryableEmptyOutput {
-			return &openAIImagesOAuthForwardOutput{Usage: usage, CreatedAt: createdAt, UsageRaw: usageRaw, FirstMeta: firstMeta, ResponseHeaders: resp.Header.Clone(), StatusCode: resp.StatusCode}, errOpenAIImagesEmptyOutputRetryable
-		}
 		if foundFinal {
-			return &openAIImagesOAuthForwardOutput{Usage: usage, CreatedAt: createdAt, UsageRaw: usageRaw, FirstMeta: firstMeta, ResponseHeaders: resp.Header.Clone(), StatusCode: resp.StatusCode}, nil
+			return &openAIImagesOAuthForwardOutput{Usage: usage, CreatedAt: createdAt, UsageRaw: usageRaw, FirstMeta: firstMeta, ResponseHeaders: resp.Header.Clone(), StatusCode: resp.StatusCode}, errOpenAIImagesEmptyOutputRetryable
 		}
 		return nil, fmt.Errorf("upstream did not return image output")
 	}
@@ -1371,13 +1368,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
 			}
 			if len(finalResults) == 0 {
-				if retryableEmptyOutput {
-					processDataErr = errOpenAIImagesEmptyOutputRetryable
-					processDataDone = true
-					return
-				}
-				imageCount = 0
-				imageOutputSizes = nil
+				processDataErr = errOpenAIImagesEmptyOutputRetryable
 				processDataDone = true
 				return
 			}
@@ -1675,7 +1666,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
-	const maxEmptyOutputAttempts = 2
+	const maxEmptyOutputAttempts = 3
 	for attempt := 1; attempt <= maxEmptyOutputAttempts; attempt++ {
 		retryableEmptyOutput := attempt < maxEmptyOutputAttempts
 
@@ -1794,7 +1785,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
-	const maxEmptyOutputAttempts = 2
+	const maxEmptyOutputAttempts = 3
 	for attempt := 1; attempt <= maxEmptyOutputAttempts; attempt++ {
 		retryableEmptyOutput := attempt < maxEmptyOutputAttempts
 

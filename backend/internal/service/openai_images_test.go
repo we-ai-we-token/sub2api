@@ -1984,7 +1984,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRetriesEmptyCompletedOu
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsNoImageWhenCompletedHasUsageButNoOutput(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsErrorWhenCompletedHasUsageButNoOutput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"url"}`)
 
@@ -2022,6 +2022,17 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsNoImageWhenCompl
 						"data: [DONE]\n\n",
 				)),
 			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_empty_completed_third"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000009,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
+						"data: [DONE]\n\n",
+				)),
+			},
 		},
 	}
 
@@ -2036,12 +2047,11 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsNoImageWhenCompl
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, 0, result.ImageCount)
+	require.ErrorIs(t, err, errOpenAIImagesEmptyOutputRetryable)
+	require.Nil(t, result)
 	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
-	require.Equal(t, 2, recorder.calls)
+	require.Equal(t, 3, recorder.calls)
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	foundCompleted := false
 	_, foundCompleted = findOpenAIImageTestSSEEvent(events, "image_generation.completed")
