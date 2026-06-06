@@ -63,9 +63,70 @@ func TestOpenAIImagesInputImagesRetryState(t *testing.T) {
 	require.Equal(t, 3, state.cyclesStarted)
 
 	state.remember(secondFailover)
+	switchAccount = state.consumeForAccountSwitch(secondErr)
+	require.True(t, switchAccount)
+	require.Nil(t, state.lastFailoverErr)
+	require.Equal(t, 3, state.cyclesStarted)
+
+	state.remember(secondFailover)
 	retry, _ = state.consumeForSameAccountRetry(secondErr, 500*time.Millisecond)
 	require.False(t, retry)
 	require.Same(t, secondFailover, state.lastFailoverErr, "exhausted retry keeps final error for downstream response")
+
+	state.remember(secondFailover)
+	switchAccount = state.consumeForAccountSwitch(secondErr)
+	require.False(t, switchAccount)
+	require.Same(t, secondFailover, state.lastFailoverErr)
+}
+
+func TestOpenAIImagesSpecialTransientRetryActionUsesSameAccountThenSwitchPerRound(t *testing.T) {
+	state := newOpenAIImagesInputImagesRetryState(3)
+	err := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "input-images",
+		Code:       "rate_limit_exceeded",
+		Message:    "Please try again in 15ms.",
+	}
+	failover := &service.UpstreamFailoverError{StatusCode: err.StatusCode, ResponseBody: []byte(err.Error())}
+
+	state.remember(failover)
+	action, delay := state.consume(err, 500*time.Millisecond)
+	require.Equal(t, openAIImagesTransientRetrySameAccount, action)
+	require.Equal(t, 500*time.Millisecond, delay)
+
+	state.remember(failover)
+	action, delay = state.consume(err, 500*time.Millisecond)
+	require.Equal(t, openAIImagesTransientRetrySwitchAccount, action)
+	require.Zero(t, delay)
+
+	state.remember(failover)
+	action, delay = state.consume(err, 500*time.Millisecond)
+	require.Equal(t, openAIImagesTransientRetrySameAccount, action)
+	require.Equal(t, 500*time.Millisecond, delay)
+}
+
+func TestOpenAIImagesSpecialTransientRetryRoundSwitchesAfterSameAccountRetry(t *testing.T) {
+	state := newOpenAIImagesInputImagesRetryState(3)
+	err := &service.OpenAIImagesUpstreamError{
+		StatusCode: http.StatusTooManyRequests,
+		ErrorType:  "input-images",
+		Code:       "rate_limit_exceeded",
+		Message:    "Please try again in 15ms.",
+	}
+	failover := &service.UpstreamFailoverError{StatusCode: err.StatusCode, ResponseBody: []byte(err.Error())}
+
+	state.remember(failover)
+	retry, delay := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
+	require.True(t, retry)
+	require.Equal(t, 500*time.Millisecond, delay)
+
+	state.remember(failover)
+	retry, delay = state.consumeForSameAccountRetry(err, 500*time.Millisecond)
+	require.False(t, retry)
+	require.Zero(t, delay)
+	require.True(t, state.consumeForAccountSwitch(err))
+	require.Equal(t, 1, state.cyclesStarted)
+	require.Equal(t, 1, state.switchesConsumed)
 }
 
 func TestOpenAIImagesTransientRetryStateAllowsThreeRetryCycles(t *testing.T) {
@@ -85,11 +146,19 @@ func TestOpenAIImagesTransientRetryStateAllowsThreeRetryCycles(t *testing.T) {
 		require.Equal(t, 500*time.Millisecond, delay)
 		require.Nil(t, state.lastFailoverErr)
 		require.Equal(t, i, state.cyclesStarted)
+
+		state.remember(failover)
+		require.True(t, state.consumeForAccountSwitch(err))
+		require.Nil(t, state.lastFailoverErr)
+		require.Equal(t, i, state.switchesConsumed)
 	}
 
 	state.remember(failover)
 	retry, _ := state.consumeForSameAccountRetry(err, 500*time.Millisecond)
 	require.False(t, retry)
+	require.Same(t, failover, state.lastFailoverErr)
+	state.remember(failover)
+	require.False(t, state.consumeForAccountSwitch(err))
 	require.Same(t, failover, state.lastFailoverErr)
 }
 
@@ -175,33 +244,4 @@ func TestOpenAIGatewayHandlerImages_DisabledGroupRejectsBeforeScheduling(t *test
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 	require.Contains(t, rec.Body.String(), service.ImageGenerationPermissionMessage())
-}
-
-func TestShouldSkipOpenAIImagesForwardFallback(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	require.False(t, shouldSkipOpenAIImagesForwardFallback(nil, false))
-
-	t.Run("fresh non-streaming response needs fallback", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-
-		require.False(t, shouldSkipOpenAIImagesForwardFallback(c, false))
-	})
-
-	t.Run("written non-streaming response skips fallback", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "upstream detail"}})
-
-		require.True(t, shouldSkipOpenAIImagesForwardFallback(c, false))
-	})
-
-	t.Run("streaming response still appends terminal error", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-		c.Writer.WriteHeader(http.StatusOK)
-
-		require.False(t, shouldSkipOpenAIImagesForwardFallback(c, true))
-	})
 }
