@@ -6060,9 +6060,6 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
-	if len(result.ImageSizeBreakdown) > 0 {
-		return s.calculateOpenAIImageBreakdownCost(ctx, billingModel, apiKey, result.ImageSizeBreakdown, multiplier)
-	}
 	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
@@ -6091,88 +6088,6 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		}
 	}
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
-}
-
-func (s *OpenAIGatewayService) calculateOpenAIImageBreakdownCost(
-	ctx context.Context,
-	billingModel string,
-	apiKey *APIKey,
-	breakdown map[string]int,
-	multiplier float64,
-) *CostBreakdown {
-	cost := &CostBreakdown{BillingMode: string(BillingModeImage)}
-	if len(breakdown) == 0 {
-		return cost
-	}
-	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
-		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
-		gid := apiKey.Group.ID
-		for _, tier := range SortedImageBillingBreakdownKeys(breakdown) {
-			count := breakdown[tier]
-			if count <= 0 {
-				continue
-			}
-			part, err := s.billingService.CalculateCostUnified(CostInput{
-				Ctx:            ctx,
-				Model:          billingModel,
-				GroupID:        &gid,
-				RequestCount:   count,
-				SizeTier:       tier,
-				RateMultiplier: multiplier,
-				Resolver:       s.resolver,
-				Resolved:       resolved,
-			})
-			if err != nil {
-				logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
-				return s.calculateOpenAIImageBreakdownFallbackCost(billingModel, apiKey, breakdown, multiplier)
-			}
-			mergeCostBreakdown(cost, part)
-		}
-		return cost
-	}
-	return s.calculateOpenAIImageBreakdownFallbackCost(billingModel, apiKey, breakdown, multiplier)
-}
-
-func (s *OpenAIGatewayService) calculateOpenAIImageBreakdownFallbackCost(
-	billingModel string,
-	apiKey *APIKey,
-	breakdown map[string]int,
-	multiplier float64,
-) *CostBreakdown {
-	var groupConfig *ImagePriceConfig
-	if apiKey != nil && apiKey.Group != nil {
-		groupConfig = &ImagePriceConfig{
-			Price1K: apiKey.Group.ImagePrice1K,
-			Price2K: apiKey.Group.ImagePrice2K,
-			Price4K: apiKey.Group.ImagePrice4K,
-		}
-	}
-	cost := &CostBreakdown{BillingMode: string(BillingModeImage)}
-	for _, tier := range SortedImageBillingBreakdownKeys(breakdown) {
-		count := breakdown[tier]
-		if count <= 0 {
-			continue
-		}
-		part := s.billingService.CalculateImageCost(billingModel, tier, count, groupConfig, multiplier)
-		mergeCostBreakdown(cost, part)
-	}
-	return cost
-}
-
-func mergeCostBreakdown(dst *CostBreakdown, src *CostBreakdown) {
-	if dst == nil || src == nil {
-		return
-	}
-	dst.InputCost += src.InputCost
-	dst.OutputCost += src.OutputCost
-	dst.ImageOutputCost += src.ImageOutputCost
-	dst.CacheCreationCost += src.CacheCreationCost
-	dst.CacheReadCost += src.CacheReadCost
-	dst.TotalCost += src.TotalCost
-	dst.ActualCost += src.ActualCost
-	if src.BillingMode != "" {
-		dst.BillingMode = src.BillingMode
-	}
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
