@@ -45,7 +45,7 @@ type openAIImagesOAuthForwardOutput struct {
 	StatusCode      int
 }
 
-var errOpenAIImagesEmptyOutputRetryable = fmt.Errorf("openai images upstream completed without image output")
+var errOpenAIImagesEmptyOutputRetryable = fmt.Errorf("openai images upstream still had no image output after 1 retry attempt")
 
 type OpenAIImagesUpstreamError struct {
 	StatusCode        int
@@ -1666,7 +1666,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
-	const maxEmptyOutputAttempts = 3
+	const maxEmptyOutputAttempts = 2
 	for attempt := 1; attempt <= maxEmptyOutputAttempts; attempt++ {
 		retryableEmptyOutput := attempt < maxEmptyOutputAttempts
 
@@ -1741,7 +1741,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 		_ = resp.Body.Close()
 		if err != nil {
 			if err == errOpenAIImagesEmptyOutputRetryable {
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying once account_id=%d request_model=%s", account.ID, requestModel)
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying empty-output attempt account_id=%d request_model=%s", account.ID, requestModel)
 				continue
 			}
 			return nil, err
@@ -1785,7 +1785,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
-	const maxEmptyOutputAttempts = 3
+	const maxEmptyOutputAttempts = 2
 	for attempt := 1; attempt <= maxEmptyOutputAttempts; attempt++ {
 		retryableEmptyOutput := attempt < maxEmptyOutputAttempts
 
@@ -1868,7 +1868,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			if err != nil {
 				if err == errOpenAIImagesEmptyOutputRetryable {
 					_ = resp.Body.Close()
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying once account_id=%d request_model=%s", account.ID, requestModel)
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying empty-output attempt account_id=%d request_model=%s", account.ID, requestModel)
 					continue
 				}
 				if imageCount > 0 {
@@ -1894,7 +1894,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			if err != nil {
 				if err == errOpenAIImagesEmptyOutputRetryable {
 					_ = resp.Body.Close()
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying once account_id=%d request_model=%s", account.ID, requestModel)
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images upstream completed without output, retrying empty-output attempt account_id=%d request_model=%s", account.ID, requestModel)
 					continue
 				}
 				return nil, err
