@@ -46,9 +46,6 @@ const messages: Record<string, string> = {
   'usage.imageBillingSize': 'Billing size',
   'usage.imageInputSize': 'Input size',
   'usage.imageOutputSize': 'Output size',
-  'usage.imageOutputTokens': 'Image output tokens',
-  'usage.imageOutputTokenPrice': 'Image output price',
-  'usage.imageOutputCost': 'Image output cost',
   'usage.imageSizeSource': 'Size source',
   'usage.imageSizeBreakdown': 'Size breakdown',
   'usage.imageSizeSourceOutput': 'Upstream output',
@@ -539,86 +536,5 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('Output size')
     expect(text).toContain('3840x2160')
     expect(text).toContain('4K x 2')
-  })
-
-  it('displays token-billed image rows as token usage with image output token costs', async () => {
-    query.mockResolvedValue({
-      items: [
-        {
-          request_id: 'req-user-token-image',
-          actual_cost: 0.00225,
-          total_cost: 0.00225,
-          rate_multiplier: 1,
-          service_tier: null,
-          input_cost: 0.0001,
-          output_cost: 0.00015,
-          image_output_cost: 0.002,
-          cache_creation_cost: 0,
-          cache_read_cost: 0,
-          input_tokens: 100,
-          output_tokens: 250,
-          image_output_tokens: 200,
-          cache_creation_tokens: 0,
-          cache_read_tokens: 0,
-          cache_creation_5m_tokens: 0,
-          cache_creation_1h_tokens: 0,
-          image_count: 1,
-          image_size: '2K',
-          image_input_size: null,
-          image_output_size: null,
-          image_size_source: null,
-          image_size_breakdown: null,
-          billing_mode: 'token',
-          first_token_ms: null,
-          duration_ms: 1,
-          created_at: '2026-03-08T00:00:00Z',
-          model: 'gpt-image-2',
-        },
-      ],
-      total: 1,
-      pages: 1,
-    })
-    getStatsByDateRange.mockResolvedValue({
-      total_requests: 1,
-      total_tokens: 350,
-      total_cost: 0.00225,
-      avg_duration_ms: 1,
-    })
-    list.mockResolvedValue({ items: [] })
-
-    const wrapper = mount(UsageView, {
-      global: {
-        stubs: {
-          AppLayout: AppLayoutStub,
-          TablePageLayout: TablePageLayoutStub,
-          Pagination: true,
-          EmptyState: true,
-          Select: true,
-          DateRangePicker: true,
-          DataTable: DataTableStub,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
-
-    await flushPromises()
-    await nextTick()
-
-    let text = wrapper.text()
-    expect(text).toContain('Token')
-    expect(text).toContain('200')
-    expect(text).not.toContain('Image count')
-
-    const setupState = (wrapper.vm as any).$?.setupState
-    setupState.tooltipData = query.mock.results[0].value ? (await query.mock.results[0].value).items[0] : null
-    setupState.tooltipVisible = true
-    await nextTick()
-
-    text = wrapper.text()
-    expect(text).toContain('Image output cost')
-    expect(text).toContain('Image output price')
-    expect(text).toContain('$0.002000')
-    expect(text).toContain('$10.0000 / 1M tokens')
   })
 })
