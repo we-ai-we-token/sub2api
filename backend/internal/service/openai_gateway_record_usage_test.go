@@ -1439,7 +1439,7 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_MixedOutputImageSizesBillPerResolvedTier(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_MixedOutputImageSizesBillByResolvedSizeAndCount(t *testing.T) {
 	imagePrice1K := 0.11
 	imagePrice2K := 0.22
 	imagePrice4K := 0.44
@@ -1476,11 +1476,11 @@ func TestOpenAIGatewayServiceRecordUsage_MixedOutputImageSizesBillPerResolvedTie
 	require.NotNil(t, usageRepo.lastLog.ImageSize)
 	require.Equal(t, ImageBillingSize4K, *usageRepo.lastLog.ImageSize)
 	require.Equal(t, map[string]int{ImageBillingSize1K: 1, ImageBillingSize2K: 1, ImageBillingSize4K: 1}, usageRepo.lastLog.ImageSizeBreakdown)
-	require.InDelta(t, 0.77, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.77, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.32, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 1.32, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ChannelMixedOutputImageSizesBillPerResolvedTier(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ChannelMixedOutputImageSizesBillByResolvedSizeAndCount(t *testing.T) {
 	groupID := int64(1204)
 	price1K := 0.10
 	price2K := 0.20
@@ -1526,8 +1526,8 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMixedOutputImageSizesBillPerReso
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, map[string]int{ImageBillingSize1K: 1, ImageBillingSize2K: 1, ImageBillingSize4K: 1}, usageRepo.lastLog.ImageSizeBreakdown)
-	require.InDelta(t, 0.70, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.70, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.20, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 1.20, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {
