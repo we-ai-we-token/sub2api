@@ -30,6 +30,7 @@ func UserFromServiceShallow(u *service.User) *User {
 		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
 		TotalRecharged:             u.TotalRecharged,
 		RPMLimit:                   u.RPMLimit,
+		DeletedAt:                  u.DeletedAt,
 	}
 }
 
@@ -596,7 +597,6 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		OutputCost:            l.OutputCost,
 		CacheCreationCost:     l.CacheCreationCost,
 		CacheReadCost:         l.CacheReadCost,
-		ImageOutputCost:       l.ImageOutputCost,
 		TotalCost:             l.TotalCost,
 		ActualCost:            l.ActualCost,
 		RateMultiplier:        l.RateMultiplier,
@@ -611,6 +611,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ImageInputSize:        l.ImageInputSize,
 		ImageOutputSize:       l.ImageOutputSize,
 		ImageOutputTokens:     l.ImageOutputTokens,
+		ImageOutputCost:       l.ImageOutputCost,
 		ImageSizeSource:       l.ImageSizeSource,
 		ImageSizeBreakdown:    l.ImageSizeBreakdown,
 		MediaType:             l.MediaType,

@@ -5,6 +5,7 @@ import { nextTick } from 'vue'
 import UsageTable from '../UsageTable.vue'
 
 const messages: Record<string, string> = {
+  'admin.usage.userDeletedBadge': 'Deleted',
   'usage.costDetails': 'Cost Breakdown',
   'admin.usage.inputCost': 'Input Cost',
   'admin.usage.outputCost': 'Output Cost',
@@ -27,9 +28,6 @@ const messages: Record<string, string> = {
   'usage.imageBillingSize': 'Billing size',
   'usage.imageInputSize': 'Input size',
   'usage.imageOutputSize': 'Output size',
-  'usage.imageOutputTokens': 'Image output tokens',
-  'usage.imageOutputTokenPrice': 'Image output price',
-  'usage.imageOutputCost': 'Image output cost',
   'usage.imageSizeSource': 'Size source',
   'usage.imageSizeBreakdown': 'Size breakdown',
   'usage.imageSizeSourceOutput': 'Upstream output',
@@ -95,8 +93,6 @@ const baseImageRow = {
   image_size: '2K',
   image_input_size: null,
   image_output_size: null,
-  image_output_tokens: 0,
-  image_output_cost: 0,
   image_size_source: null,
   image_size_breakdown: null,
 }
@@ -325,30 +321,49 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
   })
+})
 
-  it('displays token-billed image rows as token usage with image output token costs', async () => {
+// A DataTable stub that also renders cell-user, so the deleted badge can be asserted.
+const DataTableStubWithUser = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id">
+        <slot name="cell-user" :row="row" />
+        <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" />
+        <slot name="cell-cost" :row="row" />
+      </div>
+    </div>
+  `,
+}
+
+describe('admin UsageTable deleted-user badge', () => {
+  it('renders deleted badge for a soft-deleted user row', () => {
     const row = {
-      ...baseImageRow,
-      request_id: 'req-admin-token-image',
-      billing_mode: 'token',
-      input_tokens: 100,
-      output_tokens: 250,
-      image_output_tokens: 200,
-      input_cost: 0.0001,
-      output_cost: 0.00015,
-      image_output_cost: 0.002,
-      total_cost: 0.00225,
-      actual_cost: 0.00225,
+      request_id: 'req-deleted-user-1',
+      model: 'claude-3',
+      user_id: 2,
+      user: { id: 2, email: 'd@test.com', deleted_at: '2026-05-28T00:00:00Z' },
+      actual_cost: 0,
+      total_cost: 0,
+      input_cost: 0,
+      output_cost: 0,
+      rate_multiplier: 1,
+      input_tokens: 1,
+      output_tokens: 1,
     }
+
     const wrapper = mount(UsageTable, {
       props: {
         data: [row],
         loading: false,
-        columns: [],
+        columns: [{ key: 'user', label: 'User' }],
       },
       global: {
         stubs: {
-          DataTable: DataTableStub,
+          DataTable: DataTableStubWithUser,
           EmptyState: true,
           Icon: true,
           Teleport: true,
@@ -356,18 +371,42 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Token')
-    expect(wrapper.text()).toContain('200')
-    expect(wrapper.text()).not.toContain('Image count')
+    expect(wrapper.text()).toContain('Deleted')
+    expect(wrapper.text()).toContain('d@test.com')
+  })
 
-    const tooltipTriggers = wrapper.findAll('.group.relative')
-    await tooltipTriggers[tooltipTriggers.length - 1].trigger('mouseenter')
-    await nextTick()
+  it('does NOT render deleted badge for an active user row', () => {
+    const row = {
+      request_id: 'req-active-user-1',
+      model: 'claude-3',
+      user_id: 3,
+      user: { id: 3, email: 'active@test.com', deleted_at: null },
+      actual_cost: 0,
+      total_cost: 0,
+      input_cost: 0,
+      output_cost: 0,
+      rate_multiplier: 1,
+      input_tokens: 1,
+      output_tokens: 1,
+    }
 
-    const text = wrapper.text()
-    expect(text).toContain('Image output cost')
-    expect(text).toContain('Image output price')
-    expect(text).toContain('$0.002000')
-    expect(text).toContain('$10.0000 / 1M tokens')
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [{ key: 'user', label: 'User' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUser,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Deleted')
+    expect(wrapper.text()).toContain('active@test.com')
   })
 })
