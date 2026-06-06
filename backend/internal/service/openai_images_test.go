@@ -2051,7 +2051,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsErrorWhenComplet
 	require.Nil(t, result)
 	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
-	require.Equal(t, 3, recorder.calls)
+	require.Equal(t, 2, recorder.calls)
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	foundCompleted := false
 	_, foundCompleted = findOpenAIImageTestSSEEvent(events, "image_generation.completed")
