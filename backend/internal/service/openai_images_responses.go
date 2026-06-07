@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,7 +48,7 @@ type openAIImagesOAuthForwardOutput struct {
 
 const openAIImagesEmptyOutputFailoverMessage = "openai images upstream returned no image output"
 
-var errOpenAIImagesEmptyOutputRetryable = fmt.Errorf(openAIImagesEmptyOutputFailoverMessage)
+var errOpenAIImagesEmptyOutputRetryable = errors.New(openAIImagesEmptyOutputFailoverMessage)
 
 func newOpenAIImagesEmptyOutputFailoverError() *UpstreamFailoverError {
 	return &UpstreamFailoverError{
