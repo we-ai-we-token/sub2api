@@ -16,7 +16,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const openAIImagesTransientRetryMaxCycles = 3
+const (
+	openAIImagesTransientRetryMaxCycles       = 3
+	openAIImagesEmptyOutputMaxAccountSwitches = 3
+)
 
 type openAIImagesTransientRetryAction int
 
@@ -358,6 +361,37 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
+					}
+
+					if service.IsOpenAIImagesEmptyOutputFailoverError(failoverErr) {
+
+						h.gatewayService.RecordOpenAIAccountSwitch()
+
+						failedAccountIDs[account.ID] = struct{}{}
+
+						lastFailoverErr = failoverErr
+
+						if switchCount >= openAIImagesEmptyOutputMaxAccountSwitches {
+
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+
+							return
+
+						}
+
+						switchCount++
+
+						reqLog.Warn("openai.images.empty_output_failover_switching",
+
+							zap.Int64("account_id", account.ID),
+
+							zap.Int("switch_count", switchCount),
+
+							zap.Int("max_switches", openAIImagesEmptyOutputMaxAccountSwitches),
+						)
+
+						continue
+
 					}
 
 					if failoverErr.RetryableOnSameAccount {

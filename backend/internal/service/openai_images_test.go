@@ -1916,7 +1916,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesMultilineSSE(t *
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRetriesEmptyCompletedOutputOnce(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamingEmptyOutputReturnsFailoverWithoutSameAccountRetry(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"url"}`)
 
@@ -1931,30 +1931,16 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRetriesEmptyCompletedOu
 	require.NoError(t, err)
 
 	svc.httpUpstream = &httpUpstreamRecorder{
-		responses: []*http.Response{
-			{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"text/event-stream"},
-					"X-Request-Id": []string{"req_img_empty_completed_first"},
-				},
-				Body: io.NopCloser(strings.NewReader(
-					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000007,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
-						"data: [DONE]\n\n",
-				)),
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_empty_completed_first"},
 			},
-			{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"text/event-stream"},
-					"X-Request-Id": []string{"req_img_retry_success"},
-				},
-				Body: io.NopCloser(strings.NewReader(
-					"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_retry\",\"type\":\"image_generation_call\",\"result\":\"cmV0cnk=\",\"output_format\":\"png\"}}\n\n" +
-						"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000008,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
-						"data: [DONE]\n\n",
-				)),
-			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000007,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
 		},
 	}
 
@@ -1969,18 +1955,14 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRetriesEmptyCompletedOu
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, 1, result.ImageCount)
-	require.Equal(t, "req_img_retry_success", result.RequestID)
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Nil(t, result)
 	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
-	require.Equal(t, 2, recorder.calls)
-
-	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
-	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
-	require.True(t, ok)
-	require.Equal(t, "cmV0cnk=", gjson.Get(completed.Data, "b64_json").String())
+	require.Equal(t, 1, recorder.calls)
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
@@ -2047,11 +2029,14 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsErrorWhenComplet
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.ErrorIs(t, err, errOpenAIImagesEmptyOutputRetryable)
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
 	require.Nil(t, result)
 	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
-	require.Equal(t, 2, recorder.calls)
+	require.Equal(t, 1, recorder.calls)
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	foundCompleted := false
 	_, foundCompleted = findOpenAIImageTestSSEEvent(events, "image_generation.completed")
@@ -2059,7 +2044,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsErrorWhenComplet
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingRetriesEmptyCompletedOutputOnce(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingEmptyOutputReturnsFailoverWithoutSameAccountRetry(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
 
@@ -2074,29 +2059,16 @@ func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingRetriesEmptyComplete
 	require.NoError(t, err)
 
 	svc.httpUpstream = &httpUpstreamRecorder{
-		responses: []*http.Response{
-			{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"text/event-stream"},
-					"X-Request-Id": []string{"req_img_empty_nonstream_first"},
-				},
-				Body: io.NopCloser(strings.NewReader(
-					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000012,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
-						"data: [DONE]\n\n",
-				)),
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_empty_nonstream_first"},
 			},
-			{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"text/event-stream"},
-					"X-Request-Id": []string{"req_img_retry_nonstream_success"},
-				},
-				Body: io.NopCloser(strings.NewReader(
-					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000013,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"bm9uc3RyZWFt\",\"output_format\":\"png\"}]}}\n\n" +
-						"data: [DONE]\n\n",
-				)),
-			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000012,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
 		},
 	}
 
@@ -2111,14 +2083,15 @@ func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamingRetriesEmptyComplete
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, 1, result.ImageCount)
-	require.Equal(t, "req_img_retry_nonstream_success", result.RequestID)
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Nil(t, result)
 	recorder, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
-	require.Equal(t, 2, recorder.calls)
-	require.Equal(t, "bm9uc3RyZWFt", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, 1, recorder.calls)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamServerErrorIsRetryableWithoutWritingClientError(t *testing.T) {
