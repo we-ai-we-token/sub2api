@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	openAIImagesTransientRetryMaxCycles       = 3
-	openAIImagesEmptyOutputMaxAccountSwitches = 3
+	openAIImagesTransientRetryMaxCycles       = 1
+	openAIImagesEmptyOutputMaxAccountSwitches = 1
 )
 
 type openAIImagesTransientRetryAction int
