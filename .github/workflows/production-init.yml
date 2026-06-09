@@ -61,7 +61,22 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "${PROD_SSH_KEY}" > ~/.ssh/prod_key
           chmod 600 ~/.ssh/prod_key
-          ssh-keyscan -H "${PROD_HOST}" >> ~/.ssh/known_hosts
+          known_hosts_tmp="$(mktemp)"
+          trap 'rm -f "${known_hosts_tmp}"' EXIT
+          for attempt in 1 2 3; do
+            : > "${known_hosts_tmp}"
+            ssh-keyscan -T 10 -t rsa,ecdsa,ed25519 -H "${PROD_HOST}" > "${known_hosts_tmp}" || true
+            if [ -s "${known_hosts_tmp}" ]; then
+              cat "${known_hosts_tmp}" >> ~/.ssh/known_hosts
+              break
+            fi
+            echo "ssh-keyscan did not return host keys for ${PROD_HOST} on attempt ${attempt}/3" >&2
+            sleep 3
+          done
+          if [ ! -s ~/.ssh/known_hosts ]; then
+            echo "ssh-keyscan did not collect any host keys for PROD_HOST." >&2
+            exit 1
+          fi
 
       - name: Upload production deployment files
         env:
