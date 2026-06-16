@@ -224,22 +224,6 @@ func openAIImagesSSEErrorStatus(errType, code string) int {
 	}
 }
 
-func openAIImagesUpstreamErrorResponseBody(err *OpenAIImagesUpstreamError) []byte {
-	if err == nil {
-		return nil
-	}
-	body := []byte(`{"error":{"type":"","message":""}}`)
-	body, _ = sjson.SetBytes(body, "error.type", err.clientErrorType())
-	body, _ = sjson.SetBytes(body, "error.message", err.clientMessage())
-	if code := strings.TrimSpace(err.Code); code != "" {
-		body, _ = sjson.SetBytes(body, "error.code", code)
-	}
-	if param := strings.TrimSpace(err.Param); param != "" {
-		body, _ = sjson.SetBytes(body, "error.param", param)
-	}
-	return body
-}
-
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
 	if strings.TrimSpace(result.Result) != "" {
 		return strings.TrimSpace(result.OutputFormat) + "|" + strings.TrimSpace(result.Result)
@@ -1988,62 +1972,4 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 		}, nil
 	}
 	return nil, newOpenAIImagesEmptyOutputFailoverError()
-}
-
-func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	requestedModel string,
-	upstreamURL string,
-	resp *http.Response,
-	writerSizeBeforeResponse int,
-	err error,
-) error {
-	var upstreamErr *OpenAIImagesUpstreamError
-	if !errors.As(err, &upstreamErr) {
-		return err
-	}
-
-	retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
-	responseWritten := c != nil && c.Writer != nil && c.Writer.Size() != writerSizeBeforeResponse
-	kind := "http_error"
-	if retryable {
-		kind = "failover"
-		if responseWritten {
-			kind = "retry_exhausted_failover"
-		}
-	}
-
-	requestID := strings.TrimSpace(upstreamErr.UpstreamRequestID)
-	headers := http.Header(nil)
-	if resp != nil {
-		headers = resp.Header.Clone()
-		if requestID == "" {
-			requestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
-		}
-	}
-	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-		Platform:           account.Platform,
-		AccountID:          account.ID,
-		AccountName:        account.Name,
-		UpstreamStatusCode: upstreamErr.StatusCode,
-		UpstreamRequestID:  requestID,
-		UpstreamURL:        upstreamURL,
-		Kind:               kind,
-		Message:            upstreamErr.clientMessage(),
-	})
-
-	if !retryable || responseWritten {
-		return err
-	}
-
-	responseBody := openAIImagesUpstreamErrorResponseBody(upstreamErr)
-	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
-	return &UpstreamFailoverError{
-		StatusCode:             upstreamErr.StatusCode,
-		ResponseBody:           responseBody,
-		ResponseHeaders:        headers,
-		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
-	}
 }
