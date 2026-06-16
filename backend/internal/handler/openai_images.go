@@ -251,6 +251,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						failoverErr = &service.UpstreamFailoverError{StatusCode: imageUpstreamErr.StatusCode, ResponseBody: []byte(imageUpstreamErr.Error())}
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					if c.Writer.Size() != writerSizeBeforeForward {
+						reqLog.Warn("openai.images.upstream_failover_skipped_after_flush",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+						)
+						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+					}
 					lastFailoverErr = failoverErr
 					if imageUpstreamErr != nil && shouldUseOpenAIImagesSpecialTransientRetry(imageUpstreamErr) {
 						if specialTransientSwitchCount >= openAIImagesTransientMaxAccountSwitches {
@@ -281,34 +289,20 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					}
 
 					if service.IsOpenAIImagesEmptyOutputFailoverError(failoverErr) {
-
 						h.gatewayService.RecordOpenAIAccountSwitch()
-
 						failedAccountIDs[account.ID] = struct{}{}
-
 						lastFailoverErr = failoverErr
-
 						if switchCount >= openAIImagesEmptyOutputMaxAccountSwitches {
-
 							h.handleFailoverExhausted(c, failoverErr, streamStarted)
-
 							return
-
 						}
-
 						switchCount++
-
 						reqLog.Warn("openai.images.empty_output_failover_switching",
-
 							zap.Int64("account_id", account.ID),
-
 							zap.Int("switch_count", switchCount),
-
 							zap.Int("max_switches", openAIImagesEmptyOutputMaxAccountSwitches),
 						)
-
 						continue
-
 					}
 
 					if failoverErr.RetryableOnSameAccount {
