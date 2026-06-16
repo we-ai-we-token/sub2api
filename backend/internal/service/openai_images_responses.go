@@ -530,6 +530,25 @@ func buildOpenAIImagesUsageRaw(usage OpenAIUsage) []byte {
 	return body
 }
 
+func usageFromOpenAIImageGenToolUsageRaw(raw []byte) (OpenAIUsage, bool) {
+	if len(raw) == 0 || !gjson.ValidBytes(raw) {
+		return OpenAIUsage{}, false
+	}
+	usage, ok := openAIUsageFromGJSON(gjson.ParseBytes(raw))
+	if !ok {
+		return OpenAIUsage{}, false
+	}
+	if usage.InputTokens == 0 &&
+		usage.ImageInputTokens == 0 &&
+		usage.OutputTokens == 0 &&
+		usage.CacheCreationInputTokens == 0 &&
+		usage.CacheReadInputTokens == 0 &&
+		usage.ImageOutputTokens == 0 {
+		return OpenAIUsage{}, false
+	}
+	return usage, true
+}
+
 func (s *OpenAIGatewayService) ForwardImagesOAuthFanout(
 	ctx context.Context,
 	c *gin.Context,
@@ -1224,6 +1243,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingOutput(
 	if err != nil {
 		return nil, err
 	}
+	if toolUsage, ok := usageFromOpenAIImageGenToolUsageRaw(usageRaw); ok {
+		usage = toolUsage
+	}
 	if len(results) == 0 {
 		if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
 			setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
@@ -1398,6 +1420,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataErr = extractErr
 				processDataDone = true
 				return
+			}
+			if toolUsage, ok := usageFromOpenAIImageGenToolUsageRaw(usageRaw); ok {
+				usage = toolUsage
 			}
 			mergeOpenAIResponsesImageMeta(&streamMeta, firstMeta)
 			finalResults := make([]openAIResponsesImageResult, 0, len(results)+len(pendingResults))

@@ -808,12 +808,14 @@ func openAIImagesFanoutSSE(id string, createdAt int64, result string, inputToken
 			"X-Request-Id": []string{id},
 		},
 		Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
-			"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":%d,\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"output_tokens_details\":{\"image_tokens\":%d}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"%s\",\"output_format\":\"png\",\"size\":\"1024x1024\"}]}}\n\n"+
+			"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":%d,\"usage\":{\"input_tokens\":2232,\"output_tokens\":70},\"tool_usage\":{\"image_gen\":{\"input_tokens\":%d,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":%d},\"output_tokens\":%d,\"output_tokens_details\":{\"image_tokens\":%d,\"text_tokens\":0},\"total_tokens\":%d}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"%s\",\"output_format\":\"png\",\"size\":\"1024x1024\"}]}}\n\n"+
 				"data: [DONE]\n\n",
 			createdAt,
 			inputTokens,
+			inputTokens,
 			outputTokens,
 			imageTokens,
+			inputTokens+outputTokens,
 			result,
 		))),
 	}
@@ -943,7 +945,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthDoesNotPassToolN(t *testing.T) {
 				"X-Request-Id": []string{"req_img_123"},
 			},
 			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"image_tokens\":7}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"revised_prompt\":\"draw a cat 1\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":2232,\"output_tokens\":70},\"tool_usage\":{\"image_gen\":{\"input_tokens\":11,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":11},\"output_tokens\":22,\"output_tokens_details\":{\"image_tokens\":7,\"text_tokens\":15},\"total_tokens\":33}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"revised_prompt\":\"draw a cat 1\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
 					"data: [DONE]\n\n",
 			)),
 		},
