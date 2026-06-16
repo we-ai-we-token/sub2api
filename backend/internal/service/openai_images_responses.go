@@ -1797,6 +1797,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 			_, err = s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
 			return nil, err
 		}
+		writerSizeBeforeResponse := c.Writer.Size()
 		output, err := s.handleOpenAIImagesOAuthNonStreamingOutput(resp, c, parsed.ResponseFormat, requestModel, retryableEmptyOutput)
 		_ = resp.Body.Close()
 		if err != nil {
@@ -1807,7 +1808,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 				}
 				return nil, newOpenAIImagesEmptyOutputFailoverError()
 			}
-			return nil, err
+			return nil, s.handleOpenAIImagesOAuthForwardError(
+				upstreamCtx,
+				c,
+				account,
+				requestModel,
+				safeUpstreamURL(upstreamReq.URL.String()),
+				resp,
+				writerSizeBeforeResponse,
+				err,
+			)
 		}
 		if output.ImageResults == nil && len(output.ImageSizes) > 0 {
 			output.ImageResults = []openAIResponsesImageResult{}
@@ -1927,6 +1937,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			firstTokenMs     *int
 		)
 		if parsed.Stream {
+			writerSizeBeforeResponse := c.Writer.Size()
 			usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, retryableEmptyOutput)
 			if err != nil {
 				if err == errOpenAIImagesEmptyOutputRetryable {
@@ -1953,9 +1964,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 						ImageOutputSizes: imageOutputSizes,
 					}, err
 				}
-				return nil, err
+				return nil, s.handleOpenAIImagesOAuthForwardError(
+					upstreamCtx,
+					c,
+					account,
+					requestModel,
+					safeUpstreamURL(upstreamReq.URL.String()),
+					resp,
+					writerSizeBeforeResponse,
+					err,
+				)
 			}
 		} else {
+			writerSizeBeforeResponse := c.Writer.Size()
 			usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, retryableEmptyOutput)
 			if err != nil {
 				if err == errOpenAIImagesEmptyOutputRetryable {
@@ -1966,7 +1987,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 					}
 					return nil, newOpenAIImagesEmptyOutputFailoverError()
 				}
-				return nil, err
+				return nil, s.handleOpenAIImagesOAuthForwardError(
+					upstreamCtx,
+					c,
+					account,
+					requestModel,
+					safeUpstreamURL(upstreamReq.URL.String()),
+					resp,
+					writerSizeBeforeResponse,
+					err,
+				)
 			}
 		}
 		if imageCount <= 0 && len(imageOutputSizes) > 0 {
@@ -1988,6 +2018,32 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 		}, nil
 	}
 	return nil, newOpenAIImagesEmptyOutputFailoverError()
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthForwardError(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	requestedModel string,
+	upstreamURL string,
+	resp *http.Response,
+	writerSizeBeforeResponse int,
+	err error,
+) error {
+	var upstreamErr *OpenAIImagesUpstreamError
+	if errors.As(err, &upstreamErr) && IsOpenAIImagesSpecialTransientRetryError(upstreamErr) {
+		return err
+	}
+	return s.handleOpenAIImagesOAuthResponseError(
+		ctx,
+		c,
+		account,
+		requestedModel,
+		upstreamURL,
+		resp,
+		writerSizeBeforeResponse,
+		err,
+	)
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
