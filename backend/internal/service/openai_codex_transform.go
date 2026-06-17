@@ -77,6 +77,7 @@ type codexOAuthTransformOptions struct {
 	IsCompact               bool
 	SkipDefaultInstructions bool
 	PreserveToolCallIDs     bool
+	DefaultInstructions     string
 }
 
 const (
@@ -218,7 +219,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI, opts.DefaultInstructions) {
 		result.Modified = true
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
@@ -1054,9 +1055,13 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 }
 
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+func applyInstructions(reqBody map[string]any, isCodexCLI bool, defaultInstructions string) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
+	}
+	if instructions := strings.TrimSpace(defaultInstructions); instructions != "" {
+		reqBody["instructions"] = instructions
+		return true
 	}
 	model, _ := reqBody["model"].(string)
 	reqBody["instructions"] = defaultCodexSynthInstructions(model)
