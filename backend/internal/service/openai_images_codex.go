@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -170,6 +171,83 @@ func decodeOpenAIImagesDataURL(raw string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("decode data URL image input: %w", err)
 	}
 	return data, "image.png", nil
+}
+
+func (s *OpenAIGatewayService) parseOpenAIImagesCodexNonStreamingOutput(
+	resp *http.Response,
+	c *gin.Context,
+	fallbackModel string,
+) (*openAIImagesOAuthForwardOutput, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return nil, err
+	}
+	root := gjson.ParseBytes(body)
+
+	createdAt := root.Get("created").Int()
+
+	var usage OpenAIUsage
+	var usageRaw []byte
+	if u := root.Get("usage"); u.Exists() && u.IsObject() {
+		usageRaw = []byte(u.Raw)
+		if parsed, ok := openAIUsageFromGJSON(u); ok {
+			usage = parsed
+		}
+	}
+
+	firstMeta := openAIResponsesImageResult{
+		OutputFormat: strings.TrimSpace(root.Get("output_format").String()),
+		Size:         strings.TrimSpace(root.Get("size").String()),
+		Background:   strings.TrimSpace(root.Get("background").String()),
+		Quality:      strings.TrimSpace(root.Get("quality").String()),
+		Model:        strings.TrimSpace(fallbackModel),
+	}
+
+	var results []openAIResponsesImageResult
+	var sizes []string
+	for _, item := range root.Get("data").Array() {
+		b64 := strings.TrimSpace(item.Get("b64_json").String())
+		if b64 == "" {
+			continue
+		}
+		size := strings.TrimSpace(item.Get("size").String())
+		if size == "" {
+			size = firstMeta.Size
+		}
+		results = append(results, openAIResponsesImageResult{
+			Result:        b64,
+			RevisedPrompt: strings.TrimSpace(item.Get("revised_prompt").String()),
+			OutputFormat:  firstMeta.OutputFormat,
+			Size:          size,
+			Background:    firstMeta.Background,
+			Quality:       firstMeta.Quality,
+		})
+		sizes = append(sizes, size)
+	}
+
+	if len(results) == 0 {
+		return &openAIImagesOAuthForwardOutput{
+			Usage:           usage,
+			CreatedAt:       createdAt,
+			UsageRaw:        usageRaw,
+			FirstMeta:       firstMeta,
+			ResponseHeaders: resp.Header.Clone(),
+			StatusCode:      resp.StatusCode,
+		}, errOpenAIImagesEmptyOutputRetryable
+	}
+
+	return &openAIImagesOAuthForwardOutput{
+		Usage:           usage,
+		ImageResults:    results,
+		ImageSizes:      sizes,
+		CreatedAt:       createdAt,
+		UsageRaw:        usageRaw,
+		FirstMeta:       firstMeta,
+		ResponseHeaders: resp.Header.Clone(),
+		UpstreamModel:   strings.TrimSpace(fallbackModel),
+		RequestID:       resp.Header.Get("x-request-id"),
+		StatusCode:      resp.StatusCode,
+	}, nil
 }
 
 func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(

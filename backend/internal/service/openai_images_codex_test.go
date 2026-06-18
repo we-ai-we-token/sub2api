@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -189,5 +190,44 @@ func TestBuildOpenAIImagesCodexUpstreamRequestHeaders(t *testing.T) {
 	}
 	if reqE.Header.Get("Content-Type") != "multipart/form-data; boundary=zzz" {
 		t.Fatalf("edit content-type = %q", reqE.Header.Get("Content-Type"))
+	}
+}
+
+func TestParseOpenAIImagesCodexNonStreamingOutput(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	bodyJSON := `{"created":1781809378,"background":"opaque","data":[{"b64_json":"QUJD"}],` +
+		`"output_format":"png","quality":"medium","size":"2880x2880",` +
+		`"usage":{"input_tokens":24,"output_tokens":5930,"output_tokens_details":{"image_tokens":5930}}}`
+	resp := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(bodyJSON))}
+
+	out, err := s.parseOpenAIImagesCodexNonStreamingOutput(resp, c, "gpt-image-2")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(out.ImageResults) != 1 || out.ImageResults[0].Result != "QUJD" {
+		t.Fatalf("results = %#v", out.ImageResults)
+	}
+	if out.ImageSizes[0] != "2880x2880" {
+		t.Fatalf("sizes = %v", out.ImageSizes)
+	}
+	if out.FirstMeta.Quality != "medium" || out.FirstMeta.OutputFormat != "png" || out.FirstMeta.Background != "opaque" {
+		t.Fatalf("meta = %#v", out.FirstMeta)
+	}
+	if out.Usage.OutputTokens != 5930 || out.Usage.ImageOutputTokens != 5930 || out.Usage.InputTokens != 24 {
+		t.Fatalf("usage = %#v", out.Usage)
+	}
+	if out.CreatedAt != 1781809378 {
+		t.Fatalf("createdAt = %d", out.CreatedAt)
+	}
+}
+
+func TestParseOpenAIImagesCodexNonStreamingEmptyData(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	resp := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"created":1,"data":[],"usage":{"output_tokens":0}}`))}
+	_, err := s.parseOpenAIImagesCodexNonStreamingOutput(resp, c, "gpt-image-2")
+	if err != errOpenAIImagesEmptyOutputRetryable {
+		t.Fatalf("err = %v, want errOpenAIImagesEmptyOutputRetryable", err)
 	}
 }
