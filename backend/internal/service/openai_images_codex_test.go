@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -244,5 +245,29 @@ func TestParseOpenAIImagesCodexNonStreamingEmptyData(t *testing.T) {
 	}
 	if len(out.UsageRaw) == 0 {
 		t.Fatalf("UsageRaw must be set even on empty-data retryable error")
+	}
+}
+
+func TestOpenAIImagesStreamNGreaterThanOneRejected(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest("POST", "/v1/images/generations", nil)
+	acc := &Account{Type: AccountTypeOAuth}
+	parsed := &OpenAIImagesRequest{Endpoint: openAIImagesGenerationsEndpoint, Prompt: "x", Stream: true, N: 2}
+
+	_, err := s.forwardOpenAIImagesOAuth(context.Background(), c, acc, parsed, "")
+	var upErr *OpenAIImagesUpstreamError
+	if !errors.As(err, &upErr) {
+		t.Fatalf("err type = %T (%v)", err, err)
+	}
+	if upErr.StatusCode != 400 || upErr.Code != "unsupported_parameter" {
+		t.Fatalf("upErr = %#v", upErr)
+	}
+	if IsRetryableOpenAIImagesUpstreamError(upErr) {
+		t.Fatalf("must be non-retryable")
+	}
+	if rec.Code != 400 {
+		t.Fatalf("status written = %d", rec.Code)
 	}
 }

@@ -1473,6 +1473,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	if parsed.Stream && parsed.N > 1 {
+		upstreamErr := &OpenAIImagesUpstreamError{
+			StatusCode: http.StatusBadRequest,
+			ErrorType:  "invalid_request_error",
+			Code:       "unsupported_parameter",
+			Message:    "Streaming is only supported with n=1.",
+			Param:      "n",
+		}
+		writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
+		return nil, upstreamErr
+	}
 	if parsed.Stream {
 		return s.forwardOpenAIImagesOAuthStreaming(ctx, c, account, parsed, channelMappedModel, startTime)
 	}
@@ -1546,16 +1557,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 			return nil, err
 		}
 
-		responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
+		reqBody, contentType, err := buildOpenAIImagesCodexRequestBody(parsed, requestModel)
 		if err != nil {
 			return nil, err
 		}
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, parsed.StickySessionSeed(), false)
+		upstreamReq, err := s.buildOpenAIImagesCodexUpstreamRequest(upstreamCtx, c, account, parsed, reqBody, contentType, token)
 		if err != nil {
 			return nil, err
 		}
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Accept", "text/event-stream")
 
 		proxyURL := ""
 		if account.ProxyID != nil && account.Proxy != nil {
@@ -1608,7 +1617,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 			_, err = s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
 			return nil, err
 		}
-		output, err := s.handleOpenAIImagesOAuthNonStreamingOutput(resp, c, parsed.ResponseFormat, requestModel, retryableEmptyOutput)
+		output, err := s.parseOpenAIImagesCodexNonStreamingOutput(resp, c, requestModel)
 		_ = resp.Body.Close()
 		if err != nil {
 			if err == errOpenAIImagesEmptyOutputRetryable {
