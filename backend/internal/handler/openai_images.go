@@ -198,23 +198,18 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
-		var result *service.OpenAIForwardResult
-		if account.Type == service.AccountTypeOAuth && parsed.N > 1 && !parsed.Stream {
-			result, err = h.gatewayService.ForwardImagesOAuthFanout(requestCtx, c, apiKey.GroupID, parsed, channelMapping.MappedModel, failedAccountIDs)
-		} else {
-			accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
-			if !acquired {
-				return
-			}
-			result, err = func() (*service.OpenAIForwardResult, error) {
-				defer func() {
-					if accountReleaseFunc != nil {
-						accountReleaseFunc()
-					}
-				}()
-				return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
-			}()
+		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
+		if !acquired {
+			return
 		}
+		result, err := func() (*service.OpenAIForwardResult, error) {
+			defer func() {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+			}()
+			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
+		}()
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
