@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
+	"io"
 	"mime"
 	"mime/multipart"
 	"strings"
@@ -90,5 +92,47 @@ func TestBuildOpenAIImagesCodexRequestBodyEditsRemoteURLErrors(t *testing.T) {
 	_, _, err := buildOpenAIImagesCodexRequestBody(parsed, "gpt-image-2")
 	if err == nil || !strings.Contains(err.Error(), "image input") {
 		t.Fatalf("want remote-url image error, got %v", err)
+	}
+}
+
+func TestBuildOpenAIImagesCodexRequestBodyEditsDataURL(t *testing.T) {
+	raw := []byte("PNGBYTES")
+	for _, tc := range []struct {
+		name    string
+		encoded string
+	}{
+		{"padded", base64.StdEncoding.EncodeToString(raw)},
+		{"unpadded", base64.RawStdEncoding.EncodeToString(raw)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed := &OpenAIImagesRequest{
+				Endpoint:       openAIImagesEditsEndpoint,
+				Prompt:         "x",
+				N:              1,
+				InputImageURLs: []string{"data:image/png;base64," + tc.encoded},
+			}
+			body, ct, err := buildOpenAIImagesCodexRequestBody(parsed, "gpt-image-2")
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			_, params, err := mime.ParseMediaType(ct)
+			if err != nil {
+				t.Fatalf("parse media type: %v", err)
+			}
+			form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+			if err != nil {
+				t.Fatalf("read form: %v", err)
+			}
+			files := form.File["image"]
+			if len(files) != 1 {
+				t.Fatalf("want 1 image file, got %d", len(files))
+			}
+			f, _ := files[0].Open()
+			defer f.Close()
+			got, _ := io.ReadAll(f)
+			if !bytes.Equal(got, raw) {
+				t.Fatalf("decoded bytes = %q, want %q", got, raw)
+			}
+		})
 	}
 }

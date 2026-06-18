@@ -160,6 +160,9 @@ func decodeOpenAIImagesDataURL(raw string) ([]byte, string, error) {
 	}
 	data, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
+		data, err = base64.RawStdEncoding.DecodeString(payload)
+	}
+	if err != nil {
 		return nil, "", fmt.Errorf("decode data URL image input: %w", err)
 	}
 	return data, "image.png", nil
