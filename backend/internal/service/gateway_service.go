@@ -7661,18 +7661,20 @@ func extractUpstreamErrorCode(body []byte) string {
 	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
-	if !strings.HasPrefix(inner, "{") {
-		return ""
-	}
-
-	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
-		return code
-	}
-
-	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+	if strings.HasPrefix(inner, "{") {
+		if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
 			return code
 		}
+
+		if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
+			if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+				return code
+			}
+		}
+	}
+
+	if code := strings.TrimSpace(gjson.GetBytes(body, "code").String()); code != "" {
+		return code
 	}
 
 	return ""
