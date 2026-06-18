@@ -2,12 +2,16 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"mime/multipart"
+	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/sjson"
 )
 
@@ -166,4 +170,50 @@ func decodeOpenAIImagesDataURL(raw string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("decode data URL image input: %w", err)
 	}
 	return data, "image.png", nil
+}
+
+func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIImagesRequest,
+	body []byte,
+	contentType string,
+	token string,
+) (*http.Request, error) {
+	targetURL := chatgptCodexImagesGenerationsURL
+	if parsed.IsEdits() {
+		targetURL = chatgptCodexImagesEditsURL
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Host = "chatgpt.com"
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	if accountID := account.GetChatGPTAccountID(); accountID != "" {
+		req.Header.Set("chatgpt-account-id", accountID)
+	}
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	req.Header.Set("originator", "codex_cli_rs")
+	req.Header.Set("session_id", uuid.NewString())
+	req.Header.Set("User-Agent", codexCLIUserAgent)
+	req.Header.Set("Content-Type", contentType)
+	if parsed.Stream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
+
+	// 复用现有自定义 UA / 浏览器 UA 兜底（仅 OAuth 生效）。
+	if customUA := account.GetOpenAIUserAgent(); customUA != "" {
+		req.Header.Set("User-Agent", customUA)
+	}
+	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		req.Header.Set("User-Agent", codexCLIUserAgent)
+	}
+	s.overrideBrowserUserAgent(ctx, account, req)
+	return req, nil
 }

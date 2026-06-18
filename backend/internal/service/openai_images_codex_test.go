@@ -2,13 +2,16 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
 
@@ -134,5 +137,57 @@ func TestBuildOpenAIImagesCodexRequestBodyEditsDataURL(t *testing.T) {
 				t.Fatalf("decoded bytes = %q, want %q", got, raw)
 			}
 		})
+	}
+}
+
+func TestBuildOpenAIImagesCodexUpstreamRequestHeaders(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	acc := &Account{Type: AccountTypeOAuth}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/images/generations", nil)
+
+	parsedGen := &OpenAIImagesRequest{Endpoint: openAIImagesGenerationsEndpoint, Prompt: "x", N: 1}
+	req, err := s.buildOpenAIImagesCodexUpstreamRequest(context.Background(), c, acc, parsedGen, []byte(`{}`), "application/json", "tok")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if req.URL.String() != chatgptCodexImagesGenerationsURL {
+		t.Fatalf("url = %s", req.URL.String())
+	}
+	if req.Host != "chatgpt.com" {
+		t.Fatalf("host = %s", req.Host)
+	}
+	for k, want := range map[string]string{
+		"Authorization": "Bearer tok",
+		"OpenAI-Beta":   "responses=experimental",
+		"originator":    "codex_cli_rs",
+		"Content-Type":  "application/json",
+		"Accept":        "application/json",
+	} {
+		if got := req.Header.Get(k); got != want {
+			t.Fatalf("header %s = %q, want %q", k, got, want)
+		}
+	}
+	if req.Header.Get("session_id") == "" {
+		t.Fatalf("session_id must be set")
+	}
+	if req.Header.Get("User-Agent") != codexCLIUserAgent {
+		t.Fatalf("ua = %q", req.Header.Get("User-Agent"))
+	}
+
+	// 流式 edits：Accept event-stream，URL=edits
+	parsedEdit := &OpenAIImagesRequest{Endpoint: openAIImagesEditsEndpoint, Prompt: "x", N: 1, Stream: true}
+	reqE, err := s.buildOpenAIImagesCodexUpstreamRequest(context.Background(), c, acc, parsedEdit, []byte("multipart-bytes"), "multipart/form-data; boundary=zzz", "tok")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if reqE.URL.String() != chatgptCodexImagesEditsURL {
+		t.Fatalf("edit url = %s", reqE.URL.String())
+	}
+	if reqE.Header.Get("Accept") != "text/event-stream" {
+		t.Fatalf("stream accept = %q", reqE.Header.Get("Accept"))
+	}
+	if reqE.Header.Get("Content-Type") != "multipart/form-data; boundary=zzz" {
+		t.Fatalf("edit content-type = %q", reqE.Header.Get("Content-Type"))
 	}
 }
