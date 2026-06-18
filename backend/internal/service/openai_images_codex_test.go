@@ -214,6 +214,12 @@ func TestParseOpenAIImagesCodexNonStreamingOutput(t *testing.T) {
 	if out.FirstMeta.Quality != "medium" || out.FirstMeta.OutputFormat != "png" || out.FirstMeta.Background != "opaque" {
 		t.Fatalf("meta = %#v", out.FirstMeta)
 	}
+	if out.FirstMeta.Model != "gpt-image-2" {
+		t.Fatalf("FirstMeta.Model = %q", out.FirstMeta.Model)
+	}
+	if len(out.UsageRaw) == 0 {
+		t.Fatalf("UsageRaw must be set")
+	}
 	if out.Usage.OutputTokens != 5930 || out.Usage.ImageOutputTokens != 5930 || out.Usage.InputTokens != 24 {
 		t.Fatalf("usage = %#v", out.Usage)
 	}
@@ -226,8 +232,17 @@ func TestParseOpenAIImagesCodexNonStreamingEmptyData(t *testing.T) {
 	s := &OpenAIGatewayService{}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	resp := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"created":1,"data":[],"usage":{"output_tokens":0}}`))}
-	_, err := s.parseOpenAIImagesCodexNonStreamingOutput(resp, c, "gpt-image-2")
+	out, err := s.parseOpenAIImagesCodexNonStreamingOutput(resp, c, "gpt-image-2")
 	if err != errOpenAIImagesEmptyOutputRetryable {
 		t.Fatalf("err = %v, want errOpenAIImagesEmptyOutputRetryable", err)
+	}
+	if out == nil {
+		t.Fatalf("empty-data output must be non-nil to preserve billing usage")
+	}
+	if out.CreatedAt != 1 {
+		t.Fatalf("createdAt = %d, want 1", out.CreatedAt)
+	}
+	if len(out.UsageRaw) == 0 {
+		t.Fatalf("UsageRaw must be set even on empty-data retryable error")
 	}
 }
