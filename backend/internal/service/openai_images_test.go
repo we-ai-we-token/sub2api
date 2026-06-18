@@ -851,6 +851,59 @@ func TestOpenAIGatewayServiceForwardImages_OAuthServerErrorCodeIsRetryable(t *te
 	require.True(t, IsRetryableOpenAIImagesUpstreamError(upstreamErr))
 }
 
+func TestOpenAIGatewayServiceForwardImages_OAuthRetryableHTTPErrorDoesNotWriteClient(t *testing.T) {
+	// Verifies that a 400 response with type "server_error" but a non-canonical message
+	// (so shouldFailoverOpenAIUpstreamResponse returns false) is returned as a retryable
+	// *OpenAIImagesUpstreamError WITHOUT writing to the client response body. This
+	// exercises the new retryable-guard that prevents the handler's "failover skipped after
+	// flush" sentinel from blocking retry/account-switch.
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42})
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_retryable_no_write"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				`{"error":{"type":"server_error","message":"A transient server error occurred."}}`,
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.True(t, IsRetryableOpenAIImagesUpstreamError(upstreamErr))
+	// The critical assertion: the guard must NOT write to the client so the handler
+	// can retry/switch accounts without tripping the "failover skipped after flush" guard.
+	require.False(t, c.Writer.Written())
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthUpstreamHTTPErrorSurfacesRealError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)

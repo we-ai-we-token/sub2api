@@ -1546,6 +1546,26 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 				}
 			}
+			// Retryable upstream errors that are NOT failover-class (e.g. a non-failover
+			// status carrying code/type "server_error") must reach the handler as a
+			// retryable error WITHOUT writing the body to the client — otherwise the
+			// handler's "failover skipped after flush" guard stops retry/account-switch.
+			if !c.Writer.Written() {
+				if upErr := openAIImagesUpstreamErrorFromHTTP(resp.StatusCode, resp.Header, respBody); IsRetryableOpenAIImagesUpstreamError(upErr) {
+					setOpsUpstreamError(c, upErr.clientStatusCode(), upErr.clientMessage(), "")
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+						Kind:               "failover",
+						Message:            upstreamMsg,
+					})
+					return nil, upErr
+				}
+			}
 			_, err = s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
 			return nil, err
 		}
@@ -1664,6 +1684,26 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
 					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				}
+			}
+			// Retryable upstream errors that are NOT failover-class (e.g. a non-failover
+			// status carrying code/type "server_error") must reach the handler as a
+			// retryable error WITHOUT writing the body to the client — otherwise the
+			// handler's "failover skipped after flush" guard stops retry/account-switch.
+			if !c.Writer.Written() {
+				if upErr := openAIImagesUpstreamErrorFromHTTP(resp.StatusCode, resp.Header, respBody); IsRetryableOpenAIImagesUpstreamError(upErr) {
+					setOpsUpstreamError(c, upErr.clientStatusCode(), upErr.clientMessage(), "")
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+						Kind:               "failover",
+						Message:            upstreamMsg,
+					})
+					return nil, upErr
 				}
 			}
 			return s.handleErrorResponse(upstreamCtx, resp, c, account, reqBody)
