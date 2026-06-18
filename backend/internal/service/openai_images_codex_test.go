@@ -272,6 +272,22 @@ func TestOpenAIImagesStreamNGreaterThanOneRejected(t *testing.T) {
 	}
 }
 
+func TestOpenAIImagesNativeErrorClassification(t *testing.T) {
+	// 扁平 server_error → 可重试
+	serverErr := openAIImagesUpstreamErrorFromHTTP(500, http.Header{}, []byte(`{"code":"server_error","message":"oops"}`))
+	if serverErr.Code != "server_error" {
+		t.Fatalf("code = %q (顶层 code 未解析，检查 Task 1)", serverErr.Code)
+	}
+	if !IsRetryableOpenAIImagesUpstreamError(serverErr) {
+		t.Fatalf("server_error must be retryable")
+	}
+	// 扁平 unsupported_parameter → 不可重试（用户错误）
+	userErr := openAIImagesUpstreamErrorFromHTTP(400, http.Header{}, []byte(`{"code":"unsupported_parameter","message":"bad"}`))
+	if IsRetryableOpenAIImagesUpstreamError(userErr) {
+		t.Fatalf("unsupported_parameter must not be retryable")
+	}
+}
+
 func TestParseOpenAIImagesCodexStreamLine(t *testing.T) {
 	// 带 b64_json 的行
 	img, isImg, usage, hasUsage := parseOpenAIImagesCodexStreamLine([]byte(`{"b64_json":"QUJD","size":"1024x1024","output_format":"png"}`))

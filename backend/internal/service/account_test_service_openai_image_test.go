@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *testing.T) {
+func TestAccountTestService_OpenAIImageOAuthUsesCodexImagesEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -23,12 +23,10 @@ func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *tes
 		resp: &http.Response{
 			StatusCode: http.StatusOK,
 			Header: http.Header{
-				"Content-Type": []string{"text/event-stream"},
+				"Content-Type": []string{"application/json"},
 			},
 			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_123\",\"type\":\"image_generation_call\",\"result\":\"aGVsbG8=\",\"revised_prompt\":\"draw a cat\",\"output_format\":\"png\"}}\n\n" +
-					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000006,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[]}}\n\n" +
-					"data: [DONE]\n\n",
+				`{"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat","output_format":"png"}],"output_format":"png"}`,
 			)),
 		},
 	}
@@ -47,7 +45,10 @@ func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *tes
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
-	require.Contains(t, rec.Body.String(), "Calling Codex /responses image tool")
+	require.Equal(t, chatgptCodexImagesGenerationsURL, upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer token-123", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "codex_cli_rs", upstream.lastReq.Header.Get("originator"))
+	require.Contains(t, rec.Body.String(), "Calling Codex images API")
 	require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")
 	require.Contains(t, rec.Body.String(), "\"success\":true")
 }
