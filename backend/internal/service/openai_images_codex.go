@@ -295,3 +295,36 @@ func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(
 	s.overrideBrowserUserAgent(ctx, account, req)
 	return req, nil
 }
+
+// parseOpenAIImagesCodexStreamLine inspects one native SSE data line. The codex
+// images endpoint emits the final image as a flat object carrying b64_json, and
+// usage in a (possibly separate) object. No partial-preview frames.
+func parseOpenAIImagesCodexStreamLine(data []byte) (img openAIResponsesImageResult, isImage bool, usage OpenAIUsage, hasUsage bool) {
+	if !gjson.ValidBytes(data) {
+		return openAIResponsesImageResult{}, false, OpenAIUsage{}, false
+	}
+	root := gjson.ParseBytes(data)
+	if u := root.Get("usage"); u.Exists() && u.IsObject() {
+		if parsed, ok := openAIUsageFromGJSON(u); ok {
+			usage = parsed
+			hasUsage = true
+		}
+	}
+	b64 := strings.TrimSpace(root.Get("b64_json").String())
+	if b64 == "" {
+		// 兼容 data[].b64_json 包裹形态
+		b64 = strings.TrimSpace(root.Get("data.0.b64_json").String())
+	}
+	if b64 != "" {
+		img = openAIResponsesImageResult{
+			Result:        b64,
+			RevisedPrompt: strings.TrimSpace(root.Get("revised_prompt").String()),
+			OutputFormat:  strings.TrimSpace(root.Get("output_format").String()),
+			Size:          strings.TrimSpace(root.Get("size").String()),
+			Background:    strings.TrimSpace(root.Get("background").String()),
+			Quality:       strings.TrimSpace(root.Get("quality").String()),
+		}
+		isImage = true
+	}
+	return img, isImage, usage, hasUsage
+}

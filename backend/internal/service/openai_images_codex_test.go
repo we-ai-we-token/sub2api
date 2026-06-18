@@ -271,3 +271,24 @@ func TestOpenAIImagesStreamNGreaterThanOneRejected(t *testing.T) {
 		t.Fatalf("status written = %d", rec.Code)
 	}
 }
+
+func TestParseOpenAIImagesCodexStreamLine(t *testing.T) {
+	// 带 b64_json 的行
+	img, isImg, usage, hasUsage := parseOpenAIImagesCodexStreamLine([]byte(`{"b64_json":"QUJD","size":"1024x1024","output_format":"png"}`))
+	if !isImg || img.Result != "QUJD" || img.Size != "1024x1024" {
+		t.Fatalf("img=%#v isImg=%v", img, isImg)
+	}
+	if hasUsage {
+		t.Fatalf("should not report usage for image-only line")
+	}
+
+	// 带 usage 的行
+	_, isImg2, usage2, hasUsage2 := parseOpenAIImagesCodexStreamLine([]byte(`{"usage":{"output_tokens":5930,"output_tokens_details":{"image_tokens":5930}}}`))
+	if isImg2 {
+		t.Fatalf("usage line should not be an image")
+	}
+	if !hasUsage2 || usage2.ImageOutputTokens != 5930 {
+		t.Fatalf("usage=%#v has=%v", usage2, hasUsage2)
+	}
+	_ = usage
+}

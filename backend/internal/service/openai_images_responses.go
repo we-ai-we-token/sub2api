@@ -1170,6 +1170,25 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				createdAt = eventCreatedAt
 			}
 		}
+		// 原生 codex images 端点：扁平行（无 Responses event type）。
+		if strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String()) == "" {
+			if img, isImg, lineUsage, hasUsage := parseOpenAIImagesCodexStreamLine(dataBytes); isImg || hasUsage {
+				if hasUsage {
+					usage = lineUsage
+				}
+				if isImg {
+					mergeOpenAIResponsesImageMeta(&img, streamMeta)
+					key := openAIResponsesImageResultKey("", img)
+					if _, exists := emitted[key]; !exists {
+						if _, exists := pendingSeen[key]; !exists {
+							pendingSeen[key] = struct{}{}
+							pendingResults = append(pendingResults, img)
+						}
+					}
+				}
+				return
+			}
+		}
 		switch gjson.GetBytes(dataBytes, "type").String() {
 		case "response.image_generation_call.partial_image":
 			b64 := strings.TrimSpace(gjson.GetBytes(dataBytes, "partial_image_b64").String())
@@ -1309,9 +1328,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			return nil
 		}
 
-		streamErr := fmt.Errorf("stream disconnected before image generation completed")
-		s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(streamErr.Error()))
-		return streamErr
+		return errOpenAIImagesEmptyOutputRetryable
 	}
 
 	streamInterval := s.openAIImageStreamDataInterval()
@@ -1677,16 +1694,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			return nil, err
 		}
 
-		responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
+		reqBody, contentType, err := buildOpenAIImagesCodexRequestBody(parsed, requestModel)
 		if err != nil {
 			return nil, err
 		}
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, parsed.StickySessionSeed(), false)
+		upstreamReq, err := s.buildOpenAIImagesCodexUpstreamRequest(upstreamCtx, c, account, parsed, reqBody, contentType, token)
 		if err != nil {
 			return nil, err
 		}
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Accept", "text/event-stream")
 
 		proxyURL := ""
 		if account.ProxyID != nil && account.Proxy != nil {
@@ -1736,7 +1751,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 				}
 			}
-			return s.handleErrorResponse(upstreamCtx, resp, c, account, responsesBody)
+			return s.handleErrorResponse(upstreamCtx, resp, c, account, reqBody)
 		}
 		defer func() { _ = resp.Body.Close() }()
 
