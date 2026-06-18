@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Code Maps
+
+- **Codex 生图 (codex image generation)**: see [docs/CODEX_IMAGE_GENERATION.md](docs/CODEX_IMAGE_GENERATION.md) — maps the two flows (Images API `/v1/images/*` vs Codex Responses `/backend-api/codex/responses` with the `image_generation` tool), with `file:line` anchors for handlers, forwarding, transform, Spark limits, and billing.
+
 ## Branch Management
 
 This repository is a fork of the upstream `Wei-Shaw/sub2api` project.
