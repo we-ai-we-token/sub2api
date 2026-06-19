@@ -74,6 +74,15 @@ func TestOperationImageReportIntegration(t *testing.T) {
 	today, err := repo.TodayBreakdown(ctx, start, end)
 	require.NoError(t, err)
 	require.NotEmpty(t, today)
+	var openaiPlatform *service.ImageTodayItem
+	for i := range today {
+		if today[i].Dimension == "platform" && today[i].Key == "openai" {
+			openaiPlatform = &today[i]
+		}
+	}
+	require.NotNil(t, openaiPlatform, "today breakdown must include the openai platform row")
+	require.Equal(t, int64(1), openaiPlatform.Success)
+	require.Equal(t, int64(1), openaiPlatform.Failure)
 
 	// alert: openai 高用量账号 9001
 	alert, err := repo.ListAlertAccountConcurrency(ctx)
@@ -94,6 +103,15 @@ func TestOperationImageReportIntegration(t *testing.T) {
 	models, err := repo.DistinctImageModels(ctx, "openai")
 	require.NoError(t, err)
 	require.Contains(t, models, "gpt-image-2")
-	_, err = repo.ListGroups(ctx)
+	grp := mustCreateGroup(t, integrationEntClient, &service.Group{Name: "img-report-test-group"})
+	groups, err := repo.ListGroups(ctx)
 	require.NoError(t, err)
+	var foundGroup bool
+	for _, g := range groups {
+		if g.ID == grp.ID {
+			foundGroup = true
+			require.Equal(t, grp.Name, g.Name)
+		}
+	}
+	require.True(t, foundGroup, "ListGroups must contain the seeded group")
 }
