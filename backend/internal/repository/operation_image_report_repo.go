@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -58,8 +60,45 @@ func (r *operationImageReportRepository) LatencySeries(_ context.Context, _ serv
 }
 
 // RequestSeries returns success/failure counts time-series for image-generation requests.
-func (r *operationImageReportRepository) RequestSeries(_ context.Context, _ service.ImageReportSeriesFilter) ([]service.ImageRequestBucket, error) {
-	return nil, nil
+func (r *operationImageReportRepository) RequestSeries(ctx context.Context, f service.ImageReportSeriesFilter) ([]service.ImageRequestBucket, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	query := fmt.Sprintf(`
+WITH base AS (
+  SELECT
+    (date_bin($1::interval, ul.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
+    (ul.actual_cost > 0) AS success
+  FROM usage_logs ul
+  JOIN accounts a ON a.id = ul.account_id
+  WHERE ul.created_at >= $3 AND ul.created_at < $4
+    AND %s
+    AND ($5 = '' OR ul.model = $5)
+    AND ($6::bigint IS NULL OR ul.group_id = $6)
+)
+SELECT bucket_start,
+  COUNT(*) FILTER (WHERE success) AS success_count,
+  COUNT(*) FILTER (WHERE NOT success) AS failure_count
+FROM base
+GROUP BY bucket_start
+ORDER BY bucket_start`, imageModelWhere(f.Platform))
+
+	rows, err := r.sql.QueryContext(ctx, query,
+		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []service.ImageRequestBucket
+	for rows.Next() {
+		var b service.ImageRequestBucket
+		if err := rows.Scan(&b.BucketStart, &b.SuccessCount, &b.FailureCount); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }
 
 // TodayBreakdown returns today's image-generation breakdown by platform, model, and group.
