@@ -150,26 +150,148 @@ ORDER BY bucket_start`, imageModelWhere(f.Platform))
 }
 
 // TodayBreakdown returns today's image-generation breakdown by platform, model, and group.
-func (r *operationImageReportRepository) TodayBreakdown(_ context.Context, _, _ time.Time) ([]service.ImageTodayItem, error) {
-	return nil, nil
+func (r *operationImageReportRepository) TodayBreakdown(ctx context.Context, start, end time.Time) ([]service.ImageTodayItem, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	query := fmt.Sprintf(`
+WITH base AS (
+  SELECT a.platform AS platform, ul.model AS model, ul.group_id AS group_id,
+         g.name AS group_name, (ul.actual_cost > 0) AS success
+  FROM usage_logs ul
+  JOIN accounts a ON a.id = ul.account_id
+  LEFT JOIN groups g ON g.id = ul.group_id
+  WHERE ul.created_at >= $1 AND ul.created_at < $2
+    AND %s
+)
+SELECT 'platform' AS dimension, platform AS key, NULL::bigint AS group_id,
+       COUNT(*) FILTER (WHERE success) AS success, COUNT(*) FILTER (WHERE NOT success) AS failure
+FROM base GROUP BY platform
+UNION ALL
+SELECT 'model', model, NULL::bigint,
+       COUNT(*) FILTER (WHERE success), COUNT(*) FILTER (WHERE NOT success)
+FROM base GROUP BY model
+UNION ALL
+SELECT 'group', COALESCE(group_name, 'ungrouped'), group_id,
+       COUNT(*) FILTER (WHERE success), COUNT(*) FILTER (WHERE NOT success)
+FROM base GROUP BY group_id, group_name
+ORDER BY dimension, key`, imageModelWhere(""))
+
+	rows, err := r.sql.QueryContext(ctx, query, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []service.ImageTodayItem
+	for rows.Next() {
+		var it service.ImageTodayItem
+		var gid sql.NullInt64
+		if err := rows.Scan(&it.Dimension, &it.Key, &gid, &it.Success, &it.Failure); err != nil {
+			return nil, err
+		}
+		if gid.Valid {
+			v := gid.Int64
+			it.GroupID = &v
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 // ListPlatformAccountConcurrency returns accounts with concurrency config for the given platform.
-func (r *operationImageReportRepository) ListPlatformAccountConcurrency(_ context.Context, _ string) ([]service.ImageAccountConcurrency, error) {
-	return nil, nil
+func (r *operationImageReportRepository) ListPlatformAccountConcurrency(ctx context.Context, platform string) ([]service.ImageAccountConcurrency, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT id, concurrency FROM accounts
+WHERE deleted_at IS NULL AND status = 'active' AND platform = $1`, platform)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanAccountConcurrency(rows)
 }
 
 // ListAlertAccountConcurrency returns accounts flagged for concurrency alerting.
-func (r *operationImageReportRepository) ListAlertAccountConcurrency(_ context.Context) ([]service.ImageAccountConcurrency, error) {
-	return nil, nil
+func (r *operationImageReportRepository) ListAlertAccountConcurrency(ctx context.Context) ([]service.ImageAccountConcurrency, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT id, concurrency FROM accounts
+WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'oauth'
+  AND (
+    ((extra->>'codex_5h_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (extra->>'codex_5h_used_percent')::float8 >= 90)
+    OR ((extra->>'codex_7d_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (extra->>'codex_7d_used_percent')::float8 >= 90)
+  )`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanAccountConcurrency(rows)
+}
+
+func scanAccountConcurrency(rows *sql.Rows) ([]service.ImageAccountConcurrency, error) {
+	var out []service.ImageAccountConcurrency
+	for rows.Next() {
+		var a service.ImageAccountConcurrency
+		if err := rows.Scan(&a.AccountID, &a.Concurrency); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // DistinctImageModels returns distinct image model names for the given platform.
-func (r *operationImageReportRepository) DistinctImageModels(_ context.Context, _ string) ([]string, error) {
-	return nil, nil
+func (r *operationImageReportRepository) DistinctImageModels(ctx context.Context, platform string) ([]string, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	query := fmt.Sprintf(`
+SELECT DISTINCT ul.model
+FROM usage_logs ul
+JOIN accounts a ON a.id = ul.account_id
+WHERE ul.created_at >= NOW() - INTERVAL '30 days'
+  AND ul.model <> ''
+  AND %s
+ORDER BY ul.model`, imageModelWhere(platform))
+	rows, err := r.sql.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 // ListGroups returns all groups for filter option population.
-func (r *operationImageReportRepository) ListGroups(_ context.Context) ([]service.ImageReportGroupRef, error) {
-	return nil, nil
+func (r *operationImageReportRepository) ListGroups(ctx context.Context) ([]service.ImageReportGroupRef, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT id, name FROM groups WHERE deleted_at IS NULL ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.ImageReportGroupRef
+	for rows.Next() {
+		var g service.ImageReportGroupRef
+		if err := rows.Scan(&g.ID, &g.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }
