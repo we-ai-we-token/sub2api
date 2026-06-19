@@ -20,9 +20,9 @@
 
 | 数据 | 位置 | 说明 |
 |---|---|---|
-| 生图调用明细 | `usage_logs` 表 | 通过 `image_count > 0` 框定生图请求 |
+| 生图调用明细 | `usage_logs` 表 | 通过**模型名**框定生图请求（见下方识别口径） |
 | 时间戳 | `usage_logs.created_at` | 用于时区切桶 |
-| 模型名 | `usage_logs.model` | 直接取用，兼容 `gpt-image-2*` 变体与各 `gemini-*-image` |
+| 模型名 | `usage_logs.model` | 识别生图请求的依据；失败请求也会记录 model |
 | 耗时 | `usage_logs.duration_ms` | 成功耗时曲线用 |
 | 分组 | `usage_logs.group_id` | 可空 |
 | 账号 | `usage_logs.account_id` → `accounts` | 关联取平台 |
@@ -34,27 +34,48 @@
 
 可用索引：`usage_logs(created_at)`、`(account_id, created_at)`、`(group_id, created_at)`、`(model)`。
 
+### 2.1 生图请求识别口径（关键）
+
+用**模型名**识别生图请求，而非 `image_count`。原因：失败的生图请求生不出图、`image_count = 0`，用 `image_count > 0` 会把失败请求漏掉，导致无法统计失败数/成功率。模型名在成功和失败时都会落库。
+
+- openai 生图：`model ILIKE 'gpt-image-2%'`
+- gemini 生图：`model ILIKE 'gemini-%image%'`（仅 gemini 生图模型，不含普通 gemini 对话）
+
+识别为生图请求后，再按 `actual_cost > 0` 区分成功（`> 0`）/失败（`= 0`）。
+
+已知偏差：部分失败（如 429 直接拒绝、网络错误）可能根本不写 `usage_logs` 占位记录，失败数会偏低、成功率偏高；报表 UI 标注此口径。
+
 ## 3. 已确认的口径决策
 
-1. **告警并发卡片**（仅 openai）：对 5h 或 7d 使用率 ≥ 90% 的 openai oauth 账号，**同时展示**这批账号的「实时并发之和」与「配置上限之和」。
-2. **成功/失败判定**：沿用 `actual_cost > 0` 约定，不新增字段、不改写入逻辑。
-3. **查询方式**：实时只读查 `usage_logs`（近 24h、5min 桶最多 288 点），不建预聚合表。
-4. **时区**：跟随管理员浏览器时区（前端在请求中传 IANA 时区，后端据此 `date_trunc` / `date_bin`）。
+1. **生图识别**：按模型名（openai `gpt-image-2%`、gemini `gemini-%image%`），不用 `image_count`。
+2. **告警并发卡片**（仅 openai）：对 5h 或 7d 使用率 ≥ 90% 的 openai oauth 账号，**同时展示**这批账号的「实时并发之和」与「配置上限之和」。
+3. **成功/失败判定**：沿用 `actual_cost > 0` 约定，不新增字段、不改写入逻辑。
+4. **查询方式**：实时只读查 `usage_logs`（近 24h、5min 桶最多 288 点），不建预聚合表。
+5. **时区**：跟随管理员浏览器时区（前端在请求中传 IANA 时区，后端据此 `date_bin` / `AT TIME ZONE`）。
+6. **并发口径**：Redis 按账号计数，无法区分该账号上的生图与对话流量，故并发卡片为**账号级（平台维度）**口径，含该平台账号的全部在途请求。
 
 ## 4. 后端设计
 
 ### 4.1 新增文件
 
+沿用项目既有的分层 + 前缀命名隔离方式（与 `ops` 模块一致：`ops_repo*.go` / `ops_service*.go` / `ops_handler.go`），用 `operation_image_report_*` 前缀文件自成一片，而非独立 Go 子包——后者会与"repo 接口定义在 `package service`"的既有约定及 google wire 产生不必要的摩擦。删除模块 = 删除这些前缀文件 + 撤销注册。
+
 ```
-backend/internal/service/operation/image_report_service.go   # operation 子包（新建）
-backend/internal/handler/admin/operation_image_report_handler.go
-backend/internal/server/routes/admin_operation.go            # registerAdminOperationRoutes
+backend/internal/repository/operation_image_report_repo.go        # 原生 SQL 只读查询
+backend/internal/service/operation_image_report_service.go        # 接口定义 + 业务组装（并发/告警）
+backend/internal/handler/admin/operation_image_report_handler.go  # HTTP handler
+backend/internal/server/routes/admin_operation.go                 # registerAdminOperationRoutes
 ```
 
 ### 4.2 现有文件接触点（仅注册）
 
 - `backend/internal/server/routes/admin.go`：在 admin 路由组注册处新增一行 `registerAdminOperationRoutes(admin, h)`。
-- handler 聚合结构体：挂一个 `Operation` 字段指向新 handler（参照现有 `h.Admin.*` 组织方式）。
+- `backend/internal/handler/handler.go`：`AdminHandlers` 结构体新增 `OperationImageReport *admin.OperationImageReportHandler` 字段。
+- `backend/internal/handler/wire.go`：`ProvideAdminHandlers` 新增参数与赋值。
+- `backend/internal/repository/wire.go` 与 `backend/internal/service/wire.go`：在 `ProviderSet` 注册新 repo/service 构造函数。
+- google wire：改完 provider 后需重新生成 `cmd/server/wire_gen.go`（运行 wire，或按现有内容手动补一行实例化）。
+
+依赖关系（无环）：新 service 依赖 `OperationImageReportRepository` 接口（声明于 `package service`）与既有 `*service.ConcurrencyService`；新 repo（`package repository`）实现该接口、仅持有 `*sql.DB`。
 
 ### 4.3 API 端点
 
@@ -78,25 +99,33 @@ backend/internal/server/routes/admin_operation.go            # registerAdminOper
 
 ### 4.4 查询逻辑
 
-**生图范围**：`image_count > 0`；平台由 `accounts.platform` 决定；模型名取 `usage_logs.model`。
+**生图范围**（统一谓词，由平台决定模型 pattern）：
 
-1. **今日看板（/overview）**：按管理员时区切「今天」，用 `GROUP BY GROUPING SETS` 一次产出 平台 / 模型 / 分组 三个维度，每维度再按 `actual_cost > 0` 拆 成功 / 失败 计数。
+```sql
+-- platform = 'openai'
+a.platform = 'openai' AND ul.model ILIKE 'gpt-image-2%'
+-- platform = 'gemini'
+a.platform = 'gemini' AND ul.model ILIKE 'gemini-%image%'
+-- 跨平台（今日看板）：上面两条 OR
+```
+
+1. **今日看板（/overview）**：按管理员时区切「今天」（`created_at >= 当地今日 0 点`），用 `GROUP BY GROUPING SETS` 一次产出 平台 / 模型 / 分组 三个维度，每维度再按 `actual_cost > 0` 拆 成功 / 失败 计数。跨两个平台的生图谓词。
 
 2. **并发卡片（/concurrency）**：
-   - 当前并发（分平台）：取该平台 active 且参与生图的账号，逐个 `GetAccountConcurrency()`(Redis) 求和。
+   - 当前并发（分平台）：取该平台 active 账号的 id，调 `ConcurrencyService.GetAccountConcurrencyBatch()`(Redis) 求和。
    - 总并发（分平台）：`SUM(accounts.concurrency)`。
    - 告警并发（仅 openai）：筛
-     `platform='openai' AND type='oauth' AND ((extra->>'codex_5h_used_percent')::float >= 90 OR (extra->>'codex_7d_used_percent')::float >= 90)`
-     的账号，输出其「实时并发之和」与「配置上限之和」。
+     `platform='openai' AND type='oauth' AND deleted_at IS NULL AND ((extra->>'codex_5h_used_percent')::float >= 90 OR (extra->>'codex_7d_used_percent')::float >= 90)`
+     的账号，输出其「实时并发之和」（Redis 批量）与「配置上限之和」（`SUM(concurrency)`）。
 
-3. **成功耗时曲线（/latency-series）**：仅成功（`actual_cost > 0`）且 `image_count > 0`，按 `bucket` 用 PG15 `date_bin` 切桶（先 `created_at AT TIME ZONE $tz` 转本地再 bin），每桶用 `percentile_cont` 求 min/p25/p50/p75/max，并取 `avg(duration_ms)`；窗口最多近 24h。
+3. **成功耗时曲线（/latency-series）**：仅成功（`actual_cost > 0`）的生图请求，按 `bucket` 用 PG15 `date_bin` 切桶（`(date_bin($interval, ul.created_at AT TIME ZONE $tz, TIMESTAMP '2000-01-01')) AT TIME ZONE $tz AS bucket_start`），每桶用 `percentile_cont` 求 p25/p50/p75，`MIN/MAX/AVG` 求 min/max/avg（仅 `duration_ms IS NOT NULL`）；窗口最多近 24h。
 
 4. **请求量曲线（/request-series）**：同窗口同桶，每桶
    `COUNT(*) FILTER (WHERE actual_cost > 0)` 成功数、
    `COUNT(*) FILTER (WHERE actual_cost = 0)` 失败数、
-   成功率 = 成功 /（成功 + 失败）。
+   成功率 = 成功 /（成功 + 失败），在 Go 层计算。
 
-3、4 均支持 `platform`/`model`/`group_id` 筛选。
+3、4 均支持 `model`/`group_id` 筛选，`platform` 决定模型 pattern。`bucket` 仅接受 `5m`/`1h`，非法值回退 `1h`。
 
 ## 5. 前端设计
 
@@ -105,6 +134,7 @@ backend/internal/server/routes/admin_operation.go            # registerAdminOper
 ```
 frontend/src/api/admin/operationImageReport.ts            # API 封装
 frontend/src/views/admin/operation/ImageReportView.vue    # 页面
+frontend/src/views/admin/operation/components/*.vue        # 卡片/图表子组件
 ```
 
 ### 5.2 现有文件接触点
@@ -123,7 +153,7 @@ frontend/src/views/admin/operation/ImageReportView.vue    # 页面
 3. **筛选栏**：平台（默认 openai）/ 模型 / 分组 / 粒度（5m·1h）。
 4. **图表区**：成功耗时曲线 + 请求量曲线。
 
-图表库使用项目现有 **ECharts**；耗时图参照 `views/admin/ops/components/OpsLatencyChart.vue`，请求量趋势图参照 `OpsThroughputTrendChart.vue`。时区参数取浏览器 `Intl.DateTimeFormat().resolvedOptions().timeZone`，随请求下发。
+图表库使用项目 `ops` 模块同款 **chart.js + vue-chartjs**（`Line`/`Bar` 组件，`ChartJS.register(...)`），参照 `views/admin/ops/components/OpsLatencyChart.vue`。耗时曲线为多线（min/p25/p50/p75/max/avg）`Line`，请求量为 `Line`/`Bar`（成功/失败）。时区参数取浏览器 `Intl.DateTimeFormat().resolvedOptions().timeZone`，随请求下发。
 
 ## 6. 错误处理与边界
 
