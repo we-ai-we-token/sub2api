@@ -4,6 +4,8 @@
 
 - **Codex 生图 (codex image generation)**: see [docs/CODEX_IMAGE_GENERATION.md](docs/CODEX_IMAGE_GENERATION.md) — maps the two flows (Images API `/v1/images/*` vs Codex Responses `/backend-api/codex/responses` with the `image_generation` tool), with `file:line` anchors for handlers, forwarding, transform, Spark limits, and billing.
 
+- **运营管理 / 生图报表 (operation image report)**: see [docs/superpowers/specs/2026-06-20-operation-image-report-design.md](docs/superpowers/specs/2026-06-20-operation-image-report-design.md) — 运营管理一级菜单下的只读监控看板（OpenAI/Gemini 生图调用）：并发卡片、今日看板（平台/模型/分组×成功/失败）、耗时分位数曲线、请求量与成功率曲线。Key anchors: backend handler `backend/internal/handler/admin/operation_image_report_handler.go`; service `backend/internal/service/operation_image_report_service.go`; repo (raw SQL) `backend/internal/repository/operation_image_report_repo.go`; routes `backend/internal/server/routes/admin_operation.go`; frontend page `frontend/src/views/admin/operation/ImageReportView.vue`; frontend API client `frontend/src/api/admin/operationImageReport.ts`.
+
 ## Branch Management
 
 This repository is a fork of the upstream `Wei-Shaw/sub2api` project.
