@@ -1452,8 +1452,9 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsUsesCodexEditsEndpoint(t *testing.T) {
 	// Verifies that OAuth image edits route to the dedicated codex edits endpoint
-	// with a multipart body (image + mask + prompt/model/quality/output_format fields).
-	// input_fidelity is stripped (not supported by the codex images endpoint).
+	// with a JSON body (images[].image_url + mask.image_url data URLs plus
+	// prompt/model/quality/output_format fields). input_fidelity is stripped
+	// (not supported by the codex images endpoint).
 	gin.SetMode(gin.TestMode)
 
 	var body bytes.Buffer
@@ -1526,19 +1527,19 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsUsesCodexEditsEndpoint(t *t
 
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, chatgptCodexImagesEditsURL, upstream.lastReq.URL.String())
-	require.Contains(t, upstream.lastReq.Header.Get("Content-Type"), "multipart/form-data")
-	// Flat multipart form fields (no tools wrapper)
-	require.Contains(t, string(upstream.lastBody), `name="model"`)
-	require.Contains(t, string(upstream.lastBody), "gpt-image-2")
-	require.Contains(t, string(upstream.lastBody), `name="prompt"`)
-	require.Contains(t, string(upstream.lastBody), "replace background with aurora")
-	require.Contains(t, string(upstream.lastBody), `name="output_format"`)
-	require.Contains(t, string(upstream.lastBody), "webp")
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	// JSON body with native images request fields (no tools wrapper, no multipart)
+	ub := string(upstream.lastBody)
+	require.Equal(t, "gpt-image-2", gjson.Get(ub, "model").String())
+	require.Equal(t, "replace background with aurora", gjson.Get(ub, "prompt").String())
+	require.Equal(t, "webp", gjson.Get(ub, "output_format").String())
 	// input_fidelity must be stripped (not supported by codex images endpoint)
-	require.NotContains(t, string(upstream.lastBody), "input_fidelity")
-	// Image and mask files must be forwarded
-	require.Contains(t, string(upstream.lastBody), "png-image-content")
-	require.Contains(t, string(upstream.lastBody), "png-mask-content")
+	require.NotContains(t, ub, "input_fidelity")
+	// Image and mask bytes inlined as base64 data URLs (images[].image_url / mask.image_url)
+	wantImg := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("png-image-content"))
+	require.Equal(t, wantImg, gjson.Get(ub, "images.0.image_url").String())
+	wantMask := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("png-mask-content"))
+	require.Equal(t, wantMask, gjson.Get(ub, "mask.image_url").String())
 
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "replace background with aurora", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
@@ -1546,12 +1547,12 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsUsesCodexEditsEndpoint(t *t
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t *testing.T) {
 	// Verifies that OAuth streaming image edits route to the codex edits endpoint
-	// with a multipart body. Images must be provided as data URLs (remote URLs are
-	// not supported by the codex images multipart endpoint). The SSE stream from
-	// the codex endpoint is transformed and forwarded to the client.
+	// with a JSON body. Images must be provided as data URLs (remote URLs are not
+	// supported by the codex images endpoint). The SSE stream from the codex
+	// endpoint is transformed and forwarded to the client.
 	gin.SetMode(gin.TestMode)
 
-	// Use data URL images (remote URLs are rejected by the codex edits multipart path)
+	// Use data URL images (remote URLs are rejected by the codex edits endpoint)
 	imgB64 := base64.StdEncoding.EncodeToString([]byte("png-source"))
 	maskB64 := base64.StdEncoding.EncodeToString([]byte("png-mask"))
 	bodyJSON := fmt.Sprintf(`{
@@ -1605,13 +1606,14 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 
-	// Upstream request: multipart body to codex edits URL
+	// Upstream request: JSON body to codex edits URL
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, chatgptCodexImagesEditsURL, upstream.lastReq.URL.String())
-	require.Contains(t, upstream.lastReq.Header.Get("Content-Type"), "multipart/form-data")
-	// Image bytes must be forwarded as a file part; mask bytes as a mask part
-	require.Contains(t, string(upstream.lastBody), "png-source")
-	require.Contains(t, string(upstream.lastBody), "png-mask")
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	// Image/mask inlined as base64 data URLs (images[].image_url / mask.image_url)
+	ubStream := string(upstream.lastBody)
+	require.Equal(t, "data:image/png;base64,"+imgB64, gjson.Get(ubStream, "images.0.image_url").String())
+	require.Equal(t, "data:image/png;base64,"+maskB64, gjson.Get(ubStream, "mask.image_url").String())
 
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	partial, ok := findOpenAIImageTestSSEEvent(events, "image_edit.partial_image")

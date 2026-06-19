@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"mime/multipart"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +20,9 @@ const (
 )
 
 // buildOpenAIImagesCodexRequestBody builds the native OpenAI images request for
-// the dedicated codex image endpoints. generations -> JSON; edits -> multipart.
+// the dedicated codex image endpoints. Both flows use application/json: the
+// codex edits endpoint rejects multipart/form-data ("Unsupported content type")
+// and expects image inputs as an `images` array of `{image_url}` objects.
 func buildOpenAIImagesCodexRequestBody(parsed *OpenAIImagesRequest, model string) ([]byte, string, error) {
 	if parsed.IsEdits() {
 		return buildOpenAIImagesCodexEditsBody(parsed, model)
@@ -49,128 +49,116 @@ func buildOpenAIImagesCodexGenerationsBody(parsed *OpenAIImagesRequest, model st
 	return body
 }
 
+// buildOpenAIImagesCodexEditsBody builds the JSON edits request for the codex
+// images endpoint. Image inputs are inlined as an `images` array of
+// `{image_url: <base64 data URL>}` objects (the multipart/form-data shape the
+// public OpenAI API uses is rejected here as "Unsupported content type").
 func buildOpenAIImagesCodexEditsBody(parsed *OpenAIImagesRequest, model string) ([]byte, string, error) {
-	images, err := openAIImagesCodexEditImageBytes(parsed)
+	imageURLs, err := openAIImagesCodexEditImageURLs(parsed)
 	if err != nil {
 		return nil, "", err
 	}
-	if len(images) == 0 {
+	if len(imageURLs) == 0 {
 		return nil, "", fmt.Errorf("image input is required")
 	}
 
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
+	body := buildOpenAIImagesCodexGenerationsBody(parsed, model)
 
-	for _, img := range images {
-		fileName := img.FileName
-		if strings.TrimSpace(fileName) == "" {
-			fileName = "image.png"
-		}
-		fw, err := w.CreateFormFile("image", fileName)
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err := fw.Write(img.Data); err != nil {
-			return nil, "", err
-		}
+	images := make([]map[string]string, 0, len(imageURLs))
+	for _, u := range imageURLs {
+		images = append(images, map[string]string{"image_url": u})
+	}
+	body, err = sjson.SetBytes(body, "images", images)
+	if err != nil {
+		return nil, "", fmt.Errorf("set images field: %w", err)
 	}
 
-	if mask, ok, err := openAIImagesCodexEditMaskBytes(parsed); err != nil {
-		return nil, "", err
-	} else if ok {
-		fileName := mask.FileName
-		if strings.TrimSpace(fileName) == "" {
-			fileName = "mask.png"
-		}
-		fw, err := w.CreateFormFile("mask", fileName)
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err := fw.Write(mask.Data); err != nil {
-			return nil, "", err
-		}
-	}
-
-	_ = w.WriteField("prompt", parsed.Prompt)
-	_ = w.WriteField("model", strings.TrimSpace(model))
-	_ = w.WriteField("n", strconv.Itoa(parsed.N))
-	if parsed.Stream {
-		_ = w.WriteField("stream", "true")
-	}
-	for _, f := range []struct{ field, value string }{
-		{"size", parsed.Size},
-		{"quality", parsed.Quality},
-		{"output_format", parsed.OutputFormat},
-		{"background", parsed.Background},
-	} {
-		if v := strings.TrimSpace(f.value); v != "" {
-			_ = w.WriteField(f.field, v)
-		}
-	}
-
-	if err := w.Close(); err != nil {
+	maskURL, ok, err := openAIImagesCodexEditMaskURL(parsed)
+	if err != nil {
 		return nil, "", err
 	}
-	return buf.Bytes(), w.FormDataContentType(), nil
+	if ok {
+		body, err = sjson.SetBytes(body, "mask", map[string]string{"image_url": maskURL})
+		if err != nil {
+			return nil, "", fmt.Errorf("set mask field: %w", err)
+		}
+	}
+	return body, "application/json", nil
 }
 
-// openAIImagesCodexEditImageBytes returns raw image bytes for edits: from
-// Uploads (raw) or data-URL InputImageURLs. Remote http(s) URLs are rejected.
-func openAIImagesCodexEditImageBytes(parsed *OpenAIImagesRequest) ([]OpenAIImagesUpload, error) {
-	out := make([]OpenAIImagesUpload, 0, len(parsed.Uploads)+len(parsed.InputImageURLs))
+// openAIImagesCodexEditImageURLs returns base64 data URLs for edit inputs: from
+// Uploads (raw bytes) or data-URL InputImageURLs. Remote http(s) URLs are
+// rejected because the codex edits endpoint needs inline image bytes.
+func openAIImagesCodexEditImageURLs(parsed *OpenAIImagesRequest) ([]string, error) {
+	out := make([]string, 0, len(parsed.Uploads)+len(parsed.InputImageURLs))
 	for _, up := range parsed.Uploads {
 		if len(up.Data) == 0 {
 			continue
 		}
-		out = append(out, up)
+		out = append(out, openAIImagesBytesDataURL(up.Data, up.ContentType))
 	}
 	for _, raw := range parsed.InputImageURLs {
-		data, fileName, err := decodeOpenAIImagesDataURL(raw)
+		dataURL, err := normalizeOpenAIImagesEditDataURL(raw)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, OpenAIImagesUpload{FieldName: "image", FileName: fileName, Data: data})
+		out = append(out, dataURL)
 	}
 	return out, nil
 }
 
-func openAIImagesCodexEditMaskBytes(parsed *OpenAIImagesRequest) (OpenAIImagesUpload, bool, error) {
+func openAIImagesCodexEditMaskURL(parsed *OpenAIImagesRequest) (string, bool, error) {
 	if parsed.MaskUpload != nil && len(parsed.MaskUpload.Data) > 0 {
-		return *parsed.MaskUpload, true, nil
+		return openAIImagesBytesDataURL(parsed.MaskUpload.Data, parsed.MaskUpload.ContentType), true, nil
 	}
 	if raw := strings.TrimSpace(parsed.MaskImageURL); raw != "" {
-		data, fileName, err := decodeOpenAIImagesDataURL(raw)
+		dataURL, err := normalizeOpenAIImagesEditDataURL(raw)
 		if err != nil {
-			return OpenAIImagesUpload{}, false, err
+			return "", false, err
 		}
-		return OpenAIImagesUpload{FieldName: "mask", FileName: fileName, Data: data}, true, nil
+		return dataURL, true, nil
 	}
-	return OpenAIImagesUpload{}, false, nil
+	return "", false, nil
 }
 
-// decodeOpenAIImagesDataURL decodes a base64 data: URL into bytes. Remote URLs
-// (no inline bytes) are rejected because multipart needs the actual file.
-func decodeOpenAIImagesDataURL(raw string) ([]byte, string, error) {
+// openAIImagesBytesDataURL encodes raw image bytes into a base64 data URL,
+// detecting the MIME type from the bytes when contentType is empty.
+func openAIImagesBytesDataURL(data []byte, contentType string) string {
+	ct := strings.TrimSpace(contentType)
+	if ct == "" {
+		ct = http.DetectContentType(data)
+	}
+	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+// normalizeOpenAIImagesEditDataURL validates a base64 data: URL image input and
+// re-emits it with standard (padded) base64 while preserving the original MIME
+// type. Remote http(s) URLs are rejected because the codex edits endpoint needs
+// inline image bytes.
+func normalizeOpenAIImagesEditDataURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "data:") {
-		return nil, "", fmt.Errorf("image input must be uploaded bytes or a data URL")
+		return "", fmt.Errorf("image input must be uploaded bytes or a data URL")
 	}
-	idx := strings.Index(raw, ",")
-	if idx < 0 {
-		return nil, "", fmt.Errorf("invalid data URL image input")
+	meta, payload, ok := strings.Cut(raw[len("data:"):], ",")
+	if !ok {
+		return "", fmt.Errorf("invalid data URL image input")
 	}
-	meta, payload := raw[5:idx], raw[idx+1:]
 	if !strings.Contains(meta, "base64") {
-		return nil, "", fmt.Errorf("only base64 data URL image input is supported")
+		return "", fmt.Errorf("only base64 data URL image input is supported")
 	}
 	data, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
 		data, err = base64.RawStdEncoding.DecodeString(payload)
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("decode data URL image input: %w", err)
+		return "", fmt.Errorf("decode data URL image input: %w", err)
 	}
-	return data, "image.png", nil
+	mimeType := strings.TrimSpace(strings.SplitN(meta, ";", 2)[0])
+	if mimeType == "" {
+		mimeType = http.DetectContentType(data)
+	}
+	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (s *OpenAIGatewayService) parseOpenAIImagesCodexNonStreamingOutput(

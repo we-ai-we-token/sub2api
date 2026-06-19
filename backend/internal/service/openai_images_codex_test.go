@@ -6,8 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,7 +52,7 @@ func TestBuildOpenAIImagesCodexRequestBodyGenerations(t *testing.T) {
 	}
 }
 
-func TestBuildOpenAIImagesCodexRequestBodyEditsMultipart(t *testing.T) {
+func TestBuildOpenAIImagesCodexRequestBodyEditsJSON(t *testing.T) {
 	parsed := &OpenAIImagesRequest{
 		Endpoint: openAIImagesEditsEndpoint,
 		Prompt:   "make it blue",
@@ -67,23 +65,24 @@ func TestBuildOpenAIImagesCodexRequestBodyEditsMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	mediaType, params, err := mime.ParseMediaType(ct)
-	if err != nil || mediaType != "multipart/form-data" {
-		t.Fatalf("content-type = %q (mediaType=%q err=%v)", ct, mediaType, err)
+	// The codex edits endpoint rejects multipart/form-data and expects JSON
+	// with image inputs inlined as `images[].image_url` data URLs.
+	if ct != "application/json" {
+		t.Fatalf("content-type = %q, want application/json", ct)
 	}
-	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
-	form, err := mr.ReadForm(1 << 20)
-	if err != nil {
-		t.Fatalf("read form: %v", err)
+	if got := gjson.GetBytes(body, "prompt").String(); got != "make it blue" {
+		t.Fatalf("prompt = %q", got)
 	}
-	if got := form.Value["prompt"]; len(got) != 1 || got[0] != "make it blue" {
-		t.Fatalf("prompt field = %v", got)
+	if got := gjson.GetBytes(body, "model").String(); got != "gpt-image-2" {
+		t.Fatalf("model = %q", got)
 	}
-	if got := form.Value["model"]; len(got) != 1 || got[0] != "gpt-image-2" {
-		t.Fatalf("model field = %v", got)
+	images := gjson.GetBytes(body, "images")
+	if !images.IsArray() || len(images.Array()) != 1 {
+		t.Fatalf("images = %s", images.Raw)
 	}
-	if len(form.File["image"]) != 1 {
-		t.Fatalf("want 1 image file, got %d", len(form.File["image"]))
+	wantURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("PNGDATA"))
+	if got := images.Array()[0].Get("image_url").String(); got != wantURL {
+		t.Fatalf("images[0].image_url = %q, want %q", got, wantURL)
 	}
 }
 
@@ -120,21 +119,23 @@ func TestBuildOpenAIImagesCodexRequestBodyEditsDataURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
-			_, params, err := mime.ParseMediaType(ct)
+			if ct != "application/json" {
+				t.Fatalf("content-type = %q, want application/json", ct)
+			}
+			images := gjson.GetBytes(body, "images")
+			if !images.IsArray() || len(images.Array()) != 1 {
+				t.Fatalf("images = %s", images.Raw)
+			}
+			dataURL := images.Array()[0].Get("image_url").String()
+			_, payload, ok := strings.Cut(dataURL, ",")
+			if !strings.HasPrefix(dataURL, "data:") || !ok {
+				t.Fatalf("image_url is not a data URL: %q", dataURL)
+			}
+			// Inputs (padded or unpadded) are normalized to standard padded base64.
+			got, err := base64.StdEncoding.DecodeString(payload)
 			if err != nil {
-				t.Fatalf("parse media type: %v", err)
+				t.Fatalf("decode image_url payload: %v", err)
 			}
-			form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
-			if err != nil {
-				t.Fatalf("read form: %v", err)
-			}
-			files := form.File["image"]
-			if len(files) != 1 {
-				t.Fatalf("want 1 image file, got %d", len(files))
-			}
-			f, _ := files[0].Open()
-			defer func() { _ = f.Close() }()
-			got, _ := io.ReadAll(f)
 			if !bytes.Equal(got, raw) {
 				t.Fatalf("decoded bytes = %q, want %q", got, raw)
 			}
@@ -179,7 +180,7 @@ func TestBuildOpenAIImagesCodexUpstreamRequestHeaders(t *testing.T) {
 
 	// 流式 edits：Accept event-stream，URL=edits
 	parsedEdit := &OpenAIImagesRequest{Endpoint: openAIImagesEditsEndpoint, Prompt: "x", N: 1, Stream: true}
-	reqE, err := s.buildOpenAIImagesCodexUpstreamRequest(context.Background(), c, acc, parsedEdit, []byte("multipart-bytes"), "multipart/form-data; boundary=zzz", "tok")
+	reqE, err := s.buildOpenAIImagesCodexUpstreamRequest(context.Background(), c, acc, parsedEdit, []byte(`{}`), "application/json", "tok")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -189,7 +190,7 @@ func TestBuildOpenAIImagesCodexUpstreamRequestHeaders(t *testing.T) {
 	if reqE.Header.Get("Accept") != "text/event-stream" {
 		t.Fatalf("stream accept = %q", reqE.Header.Get("Accept"))
 	}
-	if reqE.Header.Get("Content-Type") != "multipart/form-data; boundary=zzz" {
+	if reqE.Header.Get("Content-Type") != "application/json" {
 		t.Fatalf("edit content-type = %q", reqE.Header.Get("Content-Type"))
 	}
 }
