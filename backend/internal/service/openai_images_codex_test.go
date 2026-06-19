@@ -133,7 +133,7 @@ func TestBuildOpenAIImagesCodexRequestBodyEditsDataURL(t *testing.T) {
 				t.Fatalf("want 1 image file, got %d", len(files))
 			}
 			f, _ := files[0].Open()
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			got, _ := io.ReadAll(f)
 			if !bytes.Equal(got, raw) {
 				t.Fatalf("decoded bytes = %q, want %q", got, raw)

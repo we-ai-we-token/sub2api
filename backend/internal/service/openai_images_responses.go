@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -399,17 +398,6 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 	default:
 		return "image/png"
 	}
-}
-
-func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
-	if len(upload.Data) == 0 {
-		return "", fmt.Errorf("upload %q is empty", strings.TrimSpace(upload.FileName))
-	}
-	contentType := strings.TrimSpace(upload.ContentType)
-	if contentType == "" {
-		contentType = http.DetectContentType(upload.Data)
-	}
-	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
 func usageFromOpenAIImageGenToolUsageRaw(raw []byte) (OpenAIUsage, bool) {
