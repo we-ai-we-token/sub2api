@@ -575,6 +575,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/operation/image-report',
+    name: 'AdminOperationImageReport',
+    component: () => import('@/views/admin/operation/ImageReportView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Image Report',
+      titleKey: 'admin.operation.imageReport.title',
+      descriptionKey: 'admin.operation.imageReport.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },

@@ -416,6 +416,8 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+    operations: 'Operations',
+    imageReport: 'Image Report',
   },
 
   // Auth
@@ -5416,6 +5418,29 @@ export default {
         resetZoomHint: 'Reset zoom (if enabled)',
         downloadChart: 'Download',
         downloadChartHint: 'Download chart as image'
+      }
+    },
+
+    operation: {
+      imageReport: {
+        title: 'Image Report',
+        description: 'Operational monitoring of OpenAI / Gemini image generation',
+        currentConcurrency: 'Current',
+        totalConcurrency: 'Total',
+        alertConcurrency: 'At-risk concurrency',
+        alertHint: 'OpenAI accounts with 5h or 7d usage ≥ 90%',
+        today: 'Today',
+        success: 'Success',
+        failure: 'Failure',
+        successRate: 'Success rate',
+        latency: 'Success latency',
+        requestVolume: 'Requests',
+        platform: 'Platform',
+        model: 'Model',
+        group: 'Group',
+        granularity: 'Granularity',
+        unavailable: 'Unavailable',
+        successRateNote: 'Failures count only logged requests; success rate may be optimistic'
       }
     },
 
