@@ -227,6 +227,11 @@ func (s *OperationImageReportService) Concurrency(ctx context.Context) (*ImageCo
 	return overview, nil
 }
 
+// newOperationImageReportServiceForTest 用测试替身注入并发读取器（生产用 NewOperationImageReportService）。
+func newOperationImageReportServiceForTest(repo OperationImageReportRepository, reader accountConcurrencyReader) *OperationImageReportService {
+	return &OperationImageReportService{repo: repo, concurrency: reader}
+}
+
 // sumCurrent 求一批账号当前并发之和；Redis 不可用时返回 (0,false) 表示降级。
 func (s *OperationImageReportService) sumCurrent(ctx context.Context, ids []int64) (int, bool) {
 	if len(ids) == 0 {
