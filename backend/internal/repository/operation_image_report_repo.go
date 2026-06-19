@@ -55,8 +55,56 @@ func nullFloatPtr(v sql.NullFloat64) *float64 {
 }
 
 // LatencySeries returns latency percentile time-series for image-generation requests.
-func (r *operationImageReportRepository) LatencySeries(_ context.Context, _ service.ImageReportSeriesFilter) ([]service.ImageLatencyBucket, error) {
-	return nil, nil
+func (r *operationImageReportRepository) LatencySeries(ctx context.Context, f service.ImageReportSeriesFilter) ([]service.ImageLatencyBucket, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	query := fmt.Sprintf(`
+WITH base AS (
+  SELECT
+    (date_bin($1::interval, ul.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
+    ul.duration_ms AS duration_ms
+  FROM usage_logs ul
+  JOIN accounts a ON a.id = ul.account_id
+  WHERE ul.created_at >= $3 AND ul.created_at < $4
+    AND ul.actual_cost > 0
+    AND ul.duration_ms IS NOT NULL
+    AND %s
+    AND ($5 = '' OR ul.model = $5)
+    AND ($6::bigint IS NULL OR ul.group_id = $6)
+)
+SELECT
+  bucket_start,
+  COUNT(*) AS cnt,
+  MIN(duration_ms)::float8 AS min_ms,
+  percentile_cont(0.25) WITHIN GROUP (ORDER BY duration_ms) AS p25_ms,
+  percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) AS p50_ms,
+  percentile_cont(0.75) WITHIN GROUP (ORDER BY duration_ms) AS p75_ms,
+  MAX(duration_ms)::float8 AS max_ms,
+  AVG(duration_ms)::float8 AS avg_ms
+FROM base
+GROUP BY bucket_start
+ORDER BY bucket_start`, imageModelWhere(f.Platform))
+
+	rows, err := r.sql.QueryContext(ctx, query,
+		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []service.ImageLatencyBucket
+	for rows.Next() {
+		var b service.ImageLatencyBucket
+		var minMs, p25, p50, p75, maxMs, avgMs sql.NullFloat64
+		if err := rows.Scan(&b.BucketStart, &b.Count, &minMs, &p25, &p50, &p75, &maxMs, &avgMs); err != nil {
+			return nil, err
+		}
+		b.MinMs, b.P25Ms, b.P50Ms = nullFloatPtr(minMs), nullFloatPtr(p25), nullFloatPtr(p50)
+		b.P75Ms, b.MaxMs, b.AvgMs = nullFloatPtr(p75), nullFloatPtr(maxMs), nullFloatPtr(avgMs)
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }
 
 // RequestSeries returns success/failure counts time-series for image-generation requests.
