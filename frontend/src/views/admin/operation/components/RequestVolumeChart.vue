@@ -47,10 +47,29 @@ const chartData = computed(() => {
   }
 })
 
-const options = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: true, position: 'top' as const } },
-  scales: { y: { beginAtZero: true } }
-}
+const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+const colors = computed(() => ({
+  grid: isDarkMode.value ? '#374151' : '#f3f4f6',
+  text: isDarkMode.value ? '#9ca3af' : '#6b7280'
+}))
+
+const options = computed(() => {
+  const c = colors.value
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: true, position: 'top' as const } },
+    scales: {
+      x: {
+        grid: { color: c.grid },
+        ticks: { color: c.text }
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: c.grid },
+        ticks: { color: c.text }
+      }
+    }
+  }
+})
 </script>

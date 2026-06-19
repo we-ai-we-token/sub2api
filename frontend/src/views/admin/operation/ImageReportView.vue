@@ -20,7 +20,7 @@
           <select
             v-model="filters.platform"
             class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 focus:outline-none dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300"
-            @change="onFilterChange"
+            @change="onPlatformChange"
           >
             <option value="openai">OpenAI</option>
             <option value="gemini">Gemini</option>
@@ -148,9 +148,15 @@ async function fetchInitial() {
   requestBuckets.value = request.buckets
 }
 
-async function onFilterChange() {
-  // Reload filter options when platform changes
+async function onPlatformChange() {
+  // Reset platform-specific filters to avoid stale values from previous platform
+  filters.model = ''
+  filters.group_id = undefined
   filterOptions.value = await operationImageReportAPI.filters(filters.platform)
+  await fetchSeries()
+}
+
+async function onFilterChange() {
   await fetchSeries()
 }
 
