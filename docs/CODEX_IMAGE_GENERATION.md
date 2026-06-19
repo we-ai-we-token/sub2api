@@ -14,7 +14,11 @@ Codex 相关的"生图"有**两条独立链路**，不要混淆：
 
 ## 链路 A：专用 Images API（`/v1/images/generations`、`/v1/images/edits`）
 
-客户端直接调用 OpenAI 图片接口。OAuth 账号下，内部会把它**转换成 Responses-API 的 `image_generation` 工具请求**，再发往 codex/responses。
+客户端直接调用 OpenAI 图片接口。OAuth 账号下，当前实现**直接调用两个专用 codex 图片端点**（`/backend-api/codex/images/generations`、`/backend-api/codex/images/edits`），收发原生 OpenAI images 格式。早期实现是把请求**转换成 Responses-API 的 `image_generation` 工具请求**发往 `codex/responses`，已被替换，保留在下方「旧实现（Responses image_generation 工具，保留备查）」一节。
+
+> **上游请求体格式（网关→codex 端点）**：generations 与 edits **均为 `application/json`**。edits 的图片输入以 `images[].image_url` 的 base64 data URL 内联、mask 为 `mask.image_url`——codex edits 端点**拒绝 `multipart/form-data`**（返回 `{"detail":"Unsupported content type"}`）。
+>
+> 这只影响**网关→上游**这一段；**客户端→网关**入站仍同时支持 multipart 上传与 JSON（`parseOpenAIImagesMultipartRequest` / `parseOpenAIImagesJSONRequest`），客户端调用方式不变。APIKey 路径走公网 `api.openai.com`，edits 仍按公共 API 用 multipart。
 
 | 阶段 | 位置 |
 |---|---|
@@ -23,14 +27,24 @@ Codex 相关的"生图"有**两条独立链路**，不要混淆：
 | 请求解析 | `parseOpenAIImagesJSONRequest` / `parseOpenAIImagesMultipartRequest` — `backend/internal/service/openai_images.go`（约 245、390 行附近，含 `n`/`size`/`quality` 校验） |
 | Service 入口 | `ForwardImages` — `backend/internal/service/openai_images.go:538`（按 `account.Type` 分流） |
 | └ APIKey 路径 | `forwardOpenAIImagesAPIKey` — `backend/internal/service/openai_images.go:559`（走 `api.openai.com/v1/images` 或自定义 base_url） |
-| └ OAuth 路径 | `forwardOpenAIImagesOAuth` — `backend/internal/service/openai_images_responses.go:1459`（**这条才是 codex 生图**） |
-| &nbsp;&nbsp;├ 非流式单次 | `forwardOpenAIImagesOAuthOnce` — `:1503` |
-| &nbsp;&nbsp;├ 流式 | `forwardOpenAIImagesOAuthStreaming` — `:1624` |
-| &nbsp;&nbsp;└ 响应解析 | `handleOpenAIImagesOAuthNonStreamingOutput` — `:1025`；`handleOpenAIImagesOAuthNonStreamingResponse` — `:1075` |
-| Images→Responses 请求体构建 | `buildOpenAIImagesResponsesRequest` — `backend/internal/service/openai_images_responses.go:431`（注入 `image_generation` 工具，输出 Responses 请求体） |
-| SSE/输出提取 | `extractOpenAIImagesFromResponsesCompleted` 等 — `backend/internal/service/openai_images_responses.go`（`response.completed` 解析、图片 base64/URL 抽取） |
+| └ OAuth 路径 | `forwardOpenAIImagesOAuth` — `backend/internal/service/openai_images_responses.go:1388`（**这条才是 codex 生图**） |
+| &nbsp;&nbsp;├ 非流式单次 | `forwardOpenAIImagesOAuthOnce` — `:1443` |
+| &nbsp;&nbsp;├ 流式 | `forwardOpenAIImagesOAuthStreaming` — `:1582` |
+| &nbsp;&nbsp;├ 上游请求体构建 | `buildOpenAIImagesCodexRequestBody` — `backend/internal/service/openai_images_codex.go:26`（generations=JSON `buildOpenAIImagesCodexGenerationsBody:33`；edits=JSON `buildOpenAIImagesCodexEditsBody:56`，图片走 `images[].image_url` data URL；端点 URL 常量 `:18-19`） |
+| &nbsp;&nbsp;├ 上游请求构建 | `buildOpenAIImagesCodexUpstreamRequest` — `openai_images_codex.go:241`（设 codex 请求头与 `Content-Type`） |
+| &nbsp;&nbsp;└ 响应解析 | 非流式 `parseOpenAIImagesCodexNonStreamingOutput` — `openai_images_codex.go:164`；流式逐行 `parseOpenAIImagesCodexStreamLine` — `:290`；下游写出 `handleOpenAIImagesOAuthNonStreamingResponse` — `openai_images_responses.go:984` |
 | 共享返回结构 | `openAIImagesOAuthForwardOutput`（struct）、`OpenAIForwardResult` — `openai_images_responses.go` / `openai_gateway_service.go` |
 | failover/重试错误类型 | `OpenAIImagesUpstreamError`、`IsRetryableOpenAIImagesUpstreamError`、`newOpenAIImagesEmptyOutputFailoverError`、`IsOpenAIImagesEmptyOutputFailoverError` — `openai_images_responses.go` 顶部（约 50–70 行） |
+
+### 旧实现（Responses `image_generation` 工具，保留备查）
+
+> 早期 OAuth 生图把 `/v1/images/*` 转换成 Responses-API 的 `image_generation` 工具请求，发往 `/backend-api/codex/responses`，再解析 `response.completed`。已被上方专用 codex 端点替换；下列请求体构建/解析函数（`buildOpenAIImagesResponsesRequest` 等）已在 commit `a6a7b0cf` 删除，仅作背景参考，**勿据此行号查找现有代码**。
+
+| 阶段（历史） | 说明 |
+|---|---|
+| Images→Responses 请求体构建 | `buildOpenAIImagesResponsesRequest`（已删除）：注入 `image_generation` 工具，输出 Responses 请求体；图片输入走工具的 `input_image.image_url`（base64 data URL） |
+| SSE/输出提取 | `extractOpenAIImagesFromResponsesCompleted` / `collectOpenAIImagesFromResponsesBody` 等（已删除）：`response.completed` 解析、图片 base64/URL 抽取 |
+| 空输出判据 | 旧：`response.completed` 无 `image_generation_call`；新：原生响应 `data` 为空数组（映射到同一个 `errOpenAIImagesEmptyOutputRetryable`） |
 
 ### 计费
 - 入口 `calculateOpenAIImageCost` — `backend/internal/service/openai_gateway_service.go:6197`

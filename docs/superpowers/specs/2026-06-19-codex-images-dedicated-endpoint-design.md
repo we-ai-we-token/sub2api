@@ -4,6 +4,8 @@
 > 范围：仅链路 A（专用 Images API）的 **OAuth 账号路径**。APIKey 路径与链路 B（Codex Responses 透传）不动。
 > 背景与代码地图见 [docs/CODEX_IMAGE_GENERATION.md](../../CODEX_IMAGE_GENERATION.md)。
 
+> **⚠️ 实现修正（上线后，commit `1350cdcb`）**：§4–§5 中"edits 用 `multipart/form-data`"的设计**未经上游实测，且是错误的**（§9 本就注明 edits "仅确认端点可达，实现后以实际返回为准"）。codex `images/edits` 端点拒绝 multipart（返回 `{"detail":"Unsupported content type"}`），只接受 `application/json`——图片输入须以 `images[].image_url` 的 base64 data URL 内联、mask 为 `mask.image_url`，其余字段（model/prompt/n/size/quality/...）与 generations 同构。实际实现以此为准（`buildOpenAIImagesCodexEditsBody`）。下文 multipart 描述保留为原始设计记录。
+
 ## 1. 目标
 
 OAuth 账号下生图当前的实现是：把 `/v1/images/*` 请求**转换成 Responses-API 的 `image_generation` 工具请求**，发往 `https://chatgpt.com/backend-api/codex/responses`，再解析 SSE `response.completed`。

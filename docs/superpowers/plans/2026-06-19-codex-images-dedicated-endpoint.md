@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **⚠️ 实现修正（上线后，commit `1350cdcb`）**：本计划中"edits 请求体用 `multipart/form-data`"的设计**未经上游实测，且是错误的**。codex `images/edits` 端点拒绝 multipart（返回 `{"detail":"Unsupported content type"}`），只接受 `application/json`——图片输入须以 `images[].image_url` 的 base64 data URL 内联、mask 为 `mask.image_url`。实际实现以此为准（`buildOpenAIImagesCodexEditsBody`）。下文 multipart 相关的描述与代码示例保留为原始计划记录，**勿照抄**。
+
 **Goal:** 把 OAuth 账号的生图从"注入 image_generation 工具走 `/backend-api/codex/responses`"改为直接调用两个原生端点 `/backend-api/codex/images/generations` 与 `/backend-api/codex/images/edits`，保持重试/计费/客户端行为不变。
 
 **Architecture:** 只改链路 A 的 OAuth 路径内部三件事——请求 URL、请求体（generations=JSON / edits=multipart）、响应解析（原生 `data[].b64_json`+`usage`）。handler 的切号/failover 循环、`ForwardImages` 分流、`forwardOpenAIImagesOAuth` 签名、`OpenAIForwardResult` 字段、计费全部不动。新代码集中在新文件 `openai_images_codex.go`。
