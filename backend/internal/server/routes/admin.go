@@ -103,6 +103,9 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 运营管理（生图报表）
+		registerAdminOperationRoutes(admin, h)
 	}
 }
 

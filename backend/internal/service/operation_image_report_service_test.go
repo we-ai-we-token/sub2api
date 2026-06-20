@@ -1,0 +1,115 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+type fakeImageReportRepo struct {
+	platformAccts map[string][]ImageAccountConcurrency
+	alertAccts    []ImageAccountConcurrency
+	reqBuckets    []ImageRequestBucket
+}
+
+func (f *fakeImageReportRepo) LatencySeries(context.Context, ImageReportSeriesFilter) ([]ImageLatencyBucket, error) {
+	return nil, nil
+}
+func (f *fakeImageReportRepo) RequestSeries(context.Context, ImageReportSeriesFilter) ([]ImageRequestBucket, error) {
+	return f.reqBuckets, nil
+}
+func (f *fakeImageReportRepo) TodayBreakdown(context.Context, time.Time, time.Time) ([]ImageTodayItem, error) {
+	return nil, nil
+}
+func (f *fakeImageReportRepo) ListPlatformAccountConcurrency(_ context.Context, p string) ([]ImageAccountConcurrency, error) {
+	return f.platformAccts[p], nil
+}
+func (f *fakeImageReportRepo) ListAlertAccountConcurrency(context.Context) ([]ImageAccountConcurrency, error) {
+	return f.alertAccts, nil
+}
+func (f *fakeImageReportRepo) DistinctImageModels(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeImageReportRepo) ListGroups(context.Context) ([]ImageReportGroupRef, error) {
+	return nil, nil
+}
+
+type fakeConcurrency struct {
+	values map[int64]int
+	err    error
+}
+
+func (f *fakeConcurrency) GetAccountConcurrencyBatch(_ context.Context, ids []int64) (map[int64]int, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := map[int64]int{}
+	for _, id := range ids {
+		out[id] = f.values[id]
+	}
+	return out, nil
+}
+
+func TestBuildSeriesFilterNormalizes(t *testing.T) {
+	s := newOperationImageReportServiceForTest(&fakeImageReportRepo{}, &fakeConcurrency{})
+	now := time.Date(2025, 1, 2, 10, 0, 0, 0, time.UTC)
+	f := s.BuildSeriesFilter("GEMINI", "  m  ", nil, "garbage", "Bad/Zone", now)
+	require.Equal(t, OperationPlatformGemini, f.Platform)
+	require.Equal(t, "m", f.Model)
+	require.Equal(t, "1h", f.Bucket)
+	require.Equal(t, "UTC", f.TZ)
+	require.Equal(t, now, f.End)
+	require.Equal(t, now.Add(-24*time.Hour), f.Start)
+}
+
+func TestRequestSeriesComputesSuccessRate(t *testing.T) {
+	repo := &fakeImageReportRepo{reqBuckets: []ImageRequestBucket{{SuccessCount: 8, FailureCount: 2}, {SuccessCount: 0, FailureCount: 0}}}
+	s := newOperationImageReportServiceForTest(repo, &fakeConcurrency{})
+	got, err := s.RequestSeries(context.Background(), ImageReportSeriesFilter{})
+	require.NoError(t, err)
+	require.InDelta(t, 0.8, got[0].SuccessRate, 1e-9)
+	require.Equal(t, 0.0, got[1].SuccessRate)
+}
+
+func TestConcurrencyAggregatesAndAlerts(t *testing.T) {
+	repo := &fakeImageReportRepo{
+		platformAccts: map[string][]ImageAccountConcurrency{
+			OperationPlatformOpenAI: {{AccountID: 1, Concurrency: 3}, {AccountID: 2, Concurrency: 5}},
+			OperationPlatformGemini: {{AccountID: 3, Concurrency: 4}},
+		},
+		alertAccts: []ImageAccountConcurrency{{AccountID: 1, Concurrency: 3}},
+	}
+	conc := &fakeConcurrency{values: map[int64]int{1: 2, 2: 1, 3: 0}}
+	s := newOperationImageReportServiceForTest(repo, conc)
+	ov, err := s.Concurrency(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ov.Cards, 2)
+	require.Equal(t, OperationPlatformOpenAI, ov.Cards[0].Platform)
+	require.Equal(t, 8, ov.Cards[0].TotalConcurrency)
+	require.Equal(t, 3, ov.Cards[0].CurrentConcurrency)
+	require.True(t, ov.Cards[0].Available)
+	require.Equal(t, OperationPlatformGemini, ov.Cards[1].Platform)
+	require.Equal(t, 4, ov.Cards[1].TotalConcurrency)
+	require.Equal(t, 0, ov.Cards[1].CurrentConcurrency)
+	require.True(t, ov.Cards[1].Available)
+	require.Equal(t, 1, ov.Alert.AccountCount)
+	require.Equal(t, 3, ov.Alert.TotalConcurrency)
+	require.Equal(t, 2, ov.Alert.CurrentConcurrency)
+}
+
+func TestConcurrencyDegradesWhenRedisFails(t *testing.T) {
+	repo := &fakeImageReportRepo{
+		platformAccts: map[string][]ImageAccountConcurrency{
+			OperationPlatformOpenAI: {{AccountID: 1, Concurrency: 3}},
+		},
+	}
+	s := newOperationImageReportServiceForTest(repo, &fakeConcurrency{err: errors.New("redis down")})
+	ov, err := s.Concurrency(context.Background())
+	require.NoError(t, err)
+	require.False(t, ov.Cards[0].Available)
+	require.Equal(t, 0, ov.Cards[0].CurrentConcurrency)
+	require.Equal(t, 3, ov.Cards[0].TotalConcurrency)
+}

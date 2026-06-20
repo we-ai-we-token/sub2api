@@ -416,6 +416,8 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    operations: '运营管理',
+    imageReport: '生图报表',
   },
 
   // Auth
@@ -5576,6 +5578,29 @@ export default {
         resetZoomHint: '重置缩放（若启用）',
         downloadChart: '下载',
         downloadChartHint: '下载图表图片'
+      }
+    },
+
+    operation: {
+      imageReport: {
+        title: '生图报表',
+        description: 'OpenAI / Gemini 生图调用的运营监控',
+        currentConcurrency: '当前并发',
+        totalConcurrency: '总并发',
+        alertConcurrency: '告警并发',
+        alertHint: '5h 或 7d 用量 ≥ 90% 的 OpenAI 账号',
+        today: '今日生图',
+        success: '成功',
+        failure: '失败',
+        successRate: '成功率',
+        latency: '成功耗时',
+        requestVolume: '请求量',
+        platform: '平台',
+        model: '模型',
+        group: '分组',
+        granularity: '粒度',
+        unavailable: '暂不可用',
+        successRateNote: '失败仅统计已落库的请求，成功率可能偏高'
       }
     },
 
