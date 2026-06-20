@@ -1,13 +1,13 @@
 <template>
-  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    <!-- Platform cards -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Category cards: openai_oauth / adobe / gemini -->
     <div
       v-for="card in cards"
-      :key="card.platform"
+      :key="card.key"
       class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700"
     >
-      <div class="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        {{ card.platform.toUpperCase() }}
+      <div class="mb-3 text-xs font-bold tracking-wider text-gray-500 dark:text-gray-400">
+        {{ cardLabel(card.key) }}
       </div>
       <div class="flex items-end justify-between">
         <div>
@@ -28,7 +28,7 @@
       v-if="alert"
       class="rounded-2xl bg-amber-50 p-5 shadow-sm ring-1 ring-amber-200 dark:bg-amber-900/20 dark:ring-amber-700/50"
     >
-      <div class="mb-3 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+      <div class="mb-3 text-xs font-bold tracking-wider text-amber-600 dark:text-amber-400">
         {{ t('admin.operation.imageReport.alertConcurrency') }}
       </div>
       <div class="flex items-end justify-between">
@@ -61,4 +61,13 @@ const { t } = useI18n()
 
 const cards = computed(() => props.overview?.cards ?? [])
 const alert = computed(() => props.overview?.alert ?? null)
+
+const cardLabel = (key: string): string => {
+  const map: Record<string, string> = {
+    openai_oauth: t('admin.operation.imageReport.cardOpenaiOauth'),
+    adobe: t('admin.operation.imageReport.cardAdobe'),
+    gemini: t('admin.operation.imageReport.cardGemini')
+  }
+  return map[key] ?? key
+}
 </script>

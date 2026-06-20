@@ -5428,19 +5428,23 @@ export default {
         currentConcurrency: 'Current',
         totalConcurrency: 'Total',
         alertConcurrency: 'At-risk concurrency',
-        alertHint: 'OpenAI accounts with 5h or 7d usage ≥ 90%',
+        alertHint: 'OpenAI image OAuth accounts with 5h or 7d usage ≥ 90%',
+        cardOpenaiOauth: 'OpenAI OAuth (image)',
+        cardAdobe: 'Adobe (image)',
+        cardGemini: 'Gemini (image)',
         today: 'Today',
         success: 'Success',
         failure: 'Failure',
         successRate: 'Success rate',
         latency: 'Success latency',
+        latencyUnit: 's',
         requestVolume: 'Requests',
         platform: 'Platform',
         model: 'Model',
         group: 'Group',
         granularity: 'Granularity',
         unavailable: 'Unavailable',
-        successRateNote: 'Failures count only logged requests; success rate may be optimistic'
+        successRateNote: 'Successes from billing records (usage_logs), failures from error logs (ops_error_logs); some early failures may be unlogged'
       }
     },
 

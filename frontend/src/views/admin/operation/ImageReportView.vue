@@ -67,10 +67,10 @@
         </div>
       </div>
 
-      <!-- Charts -->
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <LatencyChart :buckets="latencyBuckets" />
-        <RequestVolumeChart :buckets="requestBuckets" />
+      <!-- Charts: each full-width on its own row -->
+      <div class="space-y-6">
+        <RequestVolumeChart :buckets="requestBuckets" :bucket="filters.bucket" />
+        <LatencyChart :buckets="latencyBuckets" :bucket="filters.bucket" />
       </div>
 
       <!-- Footer note -->
