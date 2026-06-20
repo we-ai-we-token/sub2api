@@ -5,7 +5,7 @@
 import { apiClient } from '../client'
 
 export interface ConcurrencyCard {
-  platform: string
+  key: string // "openai_oauth" | "adobe" | "gemini"
   current_concurrency: number
   total_concurrency: number
   available: boolean

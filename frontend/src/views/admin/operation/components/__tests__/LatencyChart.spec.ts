@@ -38,7 +38,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 describe('LatencyChart', () => {
   it('shows no-data when empty', () => {
-    const w = mount(LatencyChart, { props: { buckets: [] } })
+    const w = mount(LatencyChart, { props: { buckets: [], bucket: '1h' } })
     expect(w.find('.mock-line').exists()).toBe(false)
   })
 
@@ -55,7 +55,7 @@ describe('LatencyChart', () => {
         avg_ms: 3
       }
     ]
-    const w = mount(LatencyChart, { props: { buckets } })
+    const w = mount(LatencyChart, { props: { buckets, bucket: '1h' } })
     expect(w.find('.mock-line').exists()).toBe(true)
   })
 })

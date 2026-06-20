@@ -19,17 +19,48 @@ func NewOperationImageReportRepository(db *sql.DB) service.OperationImageReportR
 	return &operationImageReportRepository{sql: db}
 }
 
-// imageModelWhere 返回识别生图请求的 SQL 片段（不含前导 AND）。
-// 依赖 join 别名：usage_logs 为 ul，accounts 为 a。
-func imageModelWhere(platform string) string {
+// imageModelPredicate 返回识别生图请求的 SQL 片段（不含前导 AND）。
+// platformCol / modelCol 为列引用（如 usage_logs 用 a.platform/ul.model，
+// ops_error_logs 用 oel.platform/oel.model）。
+func imageModelPredicate(platformCol, modelCol, platform string) string {
+	openai := fmt.Sprintf("(%s = 'openai' AND %s ILIKE 'gpt-image-2%%')", platformCol, modelCol)
+	gemini := fmt.Sprintf("(%s = 'gemini' AND %s ILIKE 'gemini-%%image%%')", platformCol, modelCol)
 	switch platform {
 	case service.OperationPlatformGemini:
-		return "(a.platform = 'gemini' AND ul.model ILIKE 'gemini-%image%')"
+		return gemini
 	case service.OperationPlatformOpenAI:
-		return "(a.platform = 'openai' AND ul.model ILIKE 'gpt-image-2%')"
+		return openai
 	default:
-		return "((a.platform = 'openai' AND ul.model ILIKE 'gpt-image-2%') OR (a.platform = 'gemini' AND ul.model ILIKE 'gemini-%image%'))"
+		return "(" + openai + " OR " + gemini + ")"
 	}
+}
+
+// imageModelWhere 用于 usage_logs（成功侧）：accounts 别名 a、usage_logs 别名 ul。
+func imageModelWhere(platform string) string {
+	return imageModelPredicate("a.platform", "ul.model", platform)
+}
+
+// imageModelWhereErr 用于 ops_error_logs（失败侧）：别名 oel。
+func imageModelWhereErr(platform string) string {
+	return imageModelPredicate("oel.platform", "oel.model", platform)
+}
+
+// modelRestrictionWhere 判断账号「模型限制」（credentials.model_mapping 的 key 即白名单项）
+// 是否包含匹配 likePattern 的条目。依赖账号别名 a。likePattern 为字面量（非用户输入）。
+func modelRestrictionWhere(likePattern string) string {
+	return fmt.Sprintf(`jsonb_typeof(a.credentials -> 'model_mapping') = 'object' AND EXISTS (
+		SELECT 1 FROM jsonb_object_keys(a.credentials -> 'model_mapping') k WHERE k ILIKE '%s'
+	)`, likePattern)
+}
+
+// adobeMembershipWhere 判断 openai api 账号是否属于 adobe 渠道。依赖账号别名 a。
+func adobeMembershipWhere() string {
+	return `a.id IN (
+		SELECT ag.account_id FROM account_groups ag
+		JOIN channel_groups cg ON cg.group_id = ag.group_id
+		JOIN channels ch ON ch.id = cg.channel_id
+		WHERE ch.name = 'adobe' AND ch.status = 'active'
+	)`
 }
 
 func bucketIntervalArg(bucket string) string {
@@ -54,7 +85,7 @@ func nullFloatPtr(v sql.NullFloat64) *float64 {
 	return &f
 }
 
-// LatencySeries returns latency percentile time-series for image-generation requests.
+// LatencySeries 返回生图「成功」请求的耗时分位数时间序列（只看 usage_logs）。
 func (r *operationImageReportRepository) LatencySeries(ctx context.Context, f service.ImageReportSeriesFilter) ([]service.ImageLatencyBucket, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
@@ -107,29 +138,43 @@ ORDER BY bucket_start`, imageModelWhere(f.Platform))
 	return out, rows.Err()
 }
 
-// RequestSeries returns success/failure counts time-series for image-generation requests.
+// RequestSeries 返回生图请求量时间序列：成功来自 usage_logs（actual_cost>0），
+// 失败来自 ops_error_logs（status_code>=400）。两源按时间桶 FULL OUTER JOIN 合并。
 func (r *operationImageReportRepository) RequestSeries(ctx context.Context, f service.ImageReportSeriesFilter) ([]service.ImageRequestBucket, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
 	}
 	query := fmt.Sprintf(`
-WITH base AS (
-  SELECT
-    (date_bin($1::interval, ul.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
-    (ul.actual_cost > 0) AS success
+WITH succ AS (
+  SELECT (date_bin($1::interval, ul.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
+         COUNT(*) AS c
   FROM usage_logs ul
   JOIN accounts a ON a.id = ul.account_id
   WHERE ul.created_at >= $3 AND ul.created_at < $4
+    AND ul.actual_cost > 0
     AND %s
     AND ($5 = '' OR ul.model = $5)
     AND ($6::bigint IS NULL OR ul.group_id = $6)
+  GROUP BY 1
+),
+fail AS (
+  SELECT (date_bin($1::interval, oel.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
+         COUNT(*) AS c
+  FROM ops_error_logs oel
+  WHERE oel.created_at >= $3 AND oel.created_at < $4
+    AND oel.status_code >= 400
+    AND oel.is_count_tokens = FALSE
+    AND %s
+    AND ($5 = '' OR oel.model = $5)
+    AND ($6::bigint IS NULL OR oel.group_id = $6)
+  GROUP BY 1
 )
-SELECT bucket_start,
-  COUNT(*) FILTER (WHERE success) AS success_count,
-  COUNT(*) FILTER (WHERE NOT success) AS failure_count
-FROM base
-GROUP BY bucket_start
-ORDER BY bucket_start`, imageModelWhere(f.Platform))
+SELECT COALESCE(s.bucket_start, fl.bucket_start) AS bucket_start,
+       COALESCE(s.c, 0) AS success_count,
+       COALESCE(fl.c, 0) AS failure_count
+FROM succ s
+FULL OUTER JOIN fail fl ON s.bucket_start = fl.bucket_start
+ORDER BY bucket_start`, imageModelWhere(f.Platform), imageModelWhereErr(f.Platform))
 
 	rows, err := r.sql.QueryContext(ctx, query,
 		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID))
@@ -149,33 +194,42 @@ ORDER BY bucket_start`, imageModelWhere(f.Platform))
 	return out, rows.Err()
 }
 
-// TodayBreakdown returns today's image-generation breakdown by platform, model, and group.
+// TodayBreakdown 返回今日生图按平台/模型/分组的成功(usage_logs)/失败(ops_error_logs)拆分。
 func (r *operationImageReportRepository) TodayBreakdown(ctx context.Context, start, end time.Time) ([]service.ImageTodayItem, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
 	}
 	query := fmt.Sprintf(`
-WITH base AS (
-  SELECT a.platform AS platform, ul.model AS model, ul.group_id AS group_id,
-         g.name AS group_name, (ul.actual_cost > 0) AS success
+WITH ev AS (
+  SELECT a.platform AS platform, ul.model AS model, ul.group_id AS group_id, 1::bigint AS succ, 0::bigint AS fail
   FROM usage_logs ul
   JOIN accounts a ON a.id = ul.account_id
-  LEFT JOIN groups g ON g.id = ul.group_id
   WHERE ul.created_at >= $1 AND ul.created_at < $2
+    AND ul.actual_cost > 0
     AND %s
+  UNION ALL
+  SELECT oel.platform, oel.model, oel.group_id, 0::bigint, 1::bigint
+  FROM ops_error_logs oel
+  WHERE oel.created_at >= $1 AND oel.created_at < $2
+    AND oel.status_code >= 400
+    AND oel.is_count_tokens = FALSE
+    AND %s
+),
+base AS (
+  SELECT ev.platform, ev.model, ev.group_id, g.name AS group_name, ev.succ, ev.fail
+  FROM ev
+  LEFT JOIN groups g ON g.id = ev.group_id
 )
 SELECT 'platform' AS dimension, platform AS key, NULL::bigint AS group_id,
-       COUNT(*) FILTER (WHERE success) AS success, COUNT(*) FILTER (WHERE NOT success) AS failure
+       SUM(succ) AS success, SUM(fail) AS failure
 FROM base GROUP BY platform
 UNION ALL
-SELECT 'model', model, NULL::bigint,
-       COUNT(*) FILTER (WHERE success), COUNT(*) FILTER (WHERE NOT success)
+SELECT 'model', model, NULL::bigint, SUM(succ), SUM(fail)
 FROM base GROUP BY model
 UNION ALL
-SELECT 'group', COALESCE(group_name, 'ungrouped'), group_id,
-       COUNT(*) FILTER (WHERE success), COUNT(*) FILTER (WHERE NOT success)
+SELECT 'group', COALESCE(group_name, 'ungrouped'), group_id, SUM(succ), SUM(fail)
 FROM base GROUP BY group_id, group_name
-ORDER BY dimension, key`, imageModelWhere(""))
+ORDER BY dimension, key`, imageModelWhere(""), imageModelWhereErr(""))
 
 	rows, err := r.sql.QueryContext(ctx, query, start, end)
 	if err != nil {
@@ -199,14 +253,25 @@ ORDER BY dimension, key`, imageModelWhere(""))
 	return out, rows.Err()
 }
 
-// ListPlatformAccountConcurrency returns accounts with concurrency config for the given platform.
-func (r *operationImageReportRepository) ListPlatformAccountConcurrency(ctx context.Context, platform string) ([]service.ImageAccountConcurrency, error) {
+// ListImageAccountConcurrency 按生图账号类别返回账号并发上限。
+// category: "openai_oauth" / "adobe" / "gemini"。
+func (r *operationImageReportRepository) ListImageAccountConcurrency(ctx context.Context, category string) ([]service.ImageAccountConcurrency, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
 	}
-	rows, err := r.sql.QueryContext(ctx, `
-SELECT id, concurrency FROM accounts
-WHERE deleted_at IS NULL AND status = 'active' AND platform = $1`, platform)
+	var cond string
+	switch category {
+	case service.ImageAccountCategoryOpenAIOAuth:
+		cond = "a.platform = 'openai' AND a.type = 'oauth' AND " + modelRestrictionWhere("gpt-image-2%")
+	case service.ImageAccountCategoryAdobe:
+		cond = "a.platform = 'openai' AND a.type <> 'oauth' AND " + adobeMembershipWhere() + " AND " + modelRestrictionWhere("gpt-image-2%")
+	case service.ImageAccountCategoryGemini:
+		cond = "a.platform = 'gemini' AND " + modelRestrictionWhere("gemini-%image%")
+	default:
+		return nil, fmt.Errorf("operation image report repository: unknown account category %q", category)
+	}
+	query := "SELECT a.id, a.concurrency FROM accounts a WHERE a.deleted_at IS NULL AND a.status = 'active' AND " + cond
+	rows, err := r.sql.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -214,18 +279,21 @@ WHERE deleted_at IS NULL AND status = 'active' AND platform = $1`, platform)
 	return scanAccountConcurrency(rows)
 }
 
-// ListAlertAccountConcurrency returns accounts flagged for concurrency alerting.
+// ListAlertAccountConcurrency 返回告警账号：openai oauth 生图账号（模型限制含 gpt-image-2*）
+// 且 5h 或 7d 用量 >= 90%。
 func (r *operationImageReportRepository) ListAlertAccountConcurrency(ctx context.Context) ([]service.ImageAccountConcurrency, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
 	}
-	rows, err := r.sql.QueryContext(ctx, `
-SELECT id, concurrency FROM accounts
-WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'oauth'
+	query := `
+SELECT a.id, a.concurrency FROM accounts a
+WHERE a.deleted_at IS NULL AND a.status = 'active' AND a.platform = 'openai' AND a.type = 'oauth'
+  AND ` + modelRestrictionWhere("gpt-image-2%") + `
   AND (
-    ((extra->>'codex_5h_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (extra->>'codex_5h_used_percent')::float8 >= 90)
-    OR ((extra->>'codex_7d_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (extra->>'codex_7d_used_percent')::float8 >= 90)
-  )`)
+    ((a.extra->>'codex_5h_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (a.extra->>'codex_5h_used_percent')::float8 >= 90)
+    OR ((a.extra->>'codex_7d_used_percent') ~ '^[0-9]+(\.[0-9]+)?$' AND (a.extra->>'codex_7d_used_percent')::float8 >= 90)
+  )`
+	rows, err := r.sql.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +313,7 @@ func scanAccountConcurrency(rows *sql.Rows) ([]service.ImageAccountConcurrency, 
 	return out, rows.Err()
 }
 
-// DistinctImageModels returns distinct image model names for the given platform.
+// DistinctImageModels 返回近 30 天出现过的生图模型名（成功侧 usage_logs）。
 func (r *operationImageReportRepository) DistinctImageModels(ctx context.Context, platform string) ([]string, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")
@@ -274,7 +342,7 @@ ORDER BY ul.model`, imageModelWhere(platform))
 	return out, rows.Err()
 }
 
-// ListGroups returns all groups for filter option population.
+// ListGroups 返回全部分组，供筛选下拉使用。
 func (r *operationImageReportRepository) ListGroups(ctx context.Context) ([]service.ImageReportGroupRef, error) {
 	if r.sql == nil {
 		return nil, errors.New("operation image report repository: nil db")

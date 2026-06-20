@@ -10,7 +10,7 @@ import (
 )
 
 type fakeImageReportRepo struct {
-	platformAccts map[string][]ImageAccountConcurrency
+	categoryAccts map[string][]ImageAccountConcurrency
 	alertAccts    []ImageAccountConcurrency
 	reqBuckets    []ImageRequestBucket
 }
@@ -24,8 +24,8 @@ func (f *fakeImageReportRepo) RequestSeries(context.Context, ImageReportSeriesFi
 func (f *fakeImageReportRepo) TodayBreakdown(context.Context, time.Time, time.Time) ([]ImageTodayItem, error) {
 	return nil, nil
 }
-func (f *fakeImageReportRepo) ListPlatformAccountConcurrency(_ context.Context, p string) ([]ImageAccountConcurrency, error) {
-	return f.platformAccts[p], nil
+func (f *fakeImageReportRepo) ListImageAccountConcurrency(_ context.Context, category string) ([]ImageAccountConcurrency, error) {
+	return f.categoryAccts[category], nil
 }
 func (f *fakeImageReportRepo) ListAlertAccountConcurrency(context.Context) ([]ImageAccountConcurrency, error) {
 	return f.alertAccts, nil
@@ -76,25 +76,29 @@ func TestRequestSeriesComputesSuccessRate(t *testing.T) {
 
 func TestConcurrencyAggregatesAndAlerts(t *testing.T) {
 	repo := &fakeImageReportRepo{
-		platformAccts: map[string][]ImageAccountConcurrency{
-			OperationPlatformOpenAI: {{AccountID: 1, Concurrency: 3}, {AccountID: 2, Concurrency: 5}},
-			OperationPlatformGemini: {{AccountID: 3, Concurrency: 4}},
+		categoryAccts: map[string][]ImageAccountConcurrency{
+			ImageAccountCategoryOpenAIOAuth: {{AccountID: 1, Concurrency: 3}, {AccountID: 2, Concurrency: 5}},
+			ImageAccountCategoryAdobe:       {{AccountID: 4, Concurrency: 2}},
+			ImageAccountCategoryGemini:      {{AccountID: 3, Concurrency: 4}},
 		},
 		alertAccts: []ImageAccountConcurrency{{AccountID: 1, Concurrency: 3}},
 	}
-	conc := &fakeConcurrency{values: map[int64]int{1: 2, 2: 1, 3: 0}}
+	conc := &fakeConcurrency{values: map[int64]int{1: 2, 2: 1, 3: 0, 4: 1}}
 	s := newOperationImageReportServiceForTest(repo, conc)
 	ov, err := s.Concurrency(context.Background())
 	require.NoError(t, err)
-	require.Len(t, ov.Cards, 2)
-	require.Equal(t, OperationPlatformOpenAI, ov.Cards[0].Platform)
+	require.Len(t, ov.Cards, 3)
+	require.Equal(t, ImageAccountCategoryOpenAIOAuth, ov.Cards[0].Key)
 	require.Equal(t, 8, ov.Cards[0].TotalConcurrency)
 	require.Equal(t, 3, ov.Cards[0].CurrentConcurrency)
 	require.True(t, ov.Cards[0].Available)
-	require.Equal(t, OperationPlatformGemini, ov.Cards[1].Platform)
-	require.Equal(t, 4, ov.Cards[1].TotalConcurrency)
-	require.Equal(t, 0, ov.Cards[1].CurrentConcurrency)
-	require.True(t, ov.Cards[1].Available)
+	require.Equal(t, ImageAccountCategoryAdobe, ov.Cards[1].Key)
+	require.Equal(t, 2, ov.Cards[1].TotalConcurrency)
+	require.Equal(t, 1, ov.Cards[1].CurrentConcurrency)
+	require.Equal(t, ImageAccountCategoryGemini, ov.Cards[2].Key)
+	require.Equal(t, 4, ov.Cards[2].TotalConcurrency)
+	require.Equal(t, 0, ov.Cards[2].CurrentConcurrency)
+	require.True(t, ov.Cards[2].Available)
 	require.Equal(t, 1, ov.Alert.AccountCount)
 	require.Equal(t, 3, ov.Alert.TotalConcurrency)
 	require.Equal(t, 2, ov.Alert.CurrentConcurrency)
@@ -102,8 +106,8 @@ func TestConcurrencyAggregatesAndAlerts(t *testing.T) {
 
 func TestConcurrencyDegradesWhenRedisFails(t *testing.T) {
 	repo := &fakeImageReportRepo{
-		platformAccts: map[string][]ImageAccountConcurrency{
-			OperationPlatformOpenAI: {{AccountID: 1, Concurrency: 3}},
+		categoryAccts: map[string][]ImageAccountConcurrency{
+			ImageAccountCategoryOpenAIOAuth: {{AccountID: 1, Concurrency: 3}},
 		},
 	}
 	s := newOperationImageReportServiceForTest(repo, &fakeConcurrency{err: errors.New("redis down")})

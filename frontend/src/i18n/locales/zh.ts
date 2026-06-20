@@ -5588,19 +5588,23 @@ export default {
         currentConcurrency: '当前并发',
         totalConcurrency: '总并发',
         alertConcurrency: '告警并发',
-        alertHint: '5h 或 7d 用量 ≥ 90% 的 OpenAI 账号',
+        alertHint: '5h 或 7d 用量 ≥ 90% 的 OpenAI 生图 OAuth 账号',
+        cardOpenaiOauth: 'OpenAI OAuth 生图',
+        cardAdobe: 'Adobe 生图',
+        cardGemini: 'Gemini 生图',
         today: '今日生图',
         success: '成功',
         failure: '失败',
         successRate: '成功率',
         latency: '成功耗时',
+        latencyUnit: '秒',
         requestVolume: '请求量',
         platform: '平台',
         model: '模型',
         group: '分组',
         granularity: '粒度',
         unavailable: '暂不可用',
-        successRateNote: '失败仅统计已落库的请求，成功率可能偏高'
+        successRateNote: '成功取自计费记录(usage_logs)，失败取自错误日志(ops_error_logs)；部分早期失败可能未落库'
       }
     },
 
