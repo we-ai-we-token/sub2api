@@ -29,11 +29,11 @@ ON CONFLICT (id) DO NOTHING`)
 	now := time.Now().UTC()
 	// 成功生图(openai, actual_cost>0)、失败生图(actual_cost=0)、gemini 成功生图。
 	_, err = integrationDB.ExecContext(ctx, `
-INSERT INTO usage_logs (user_id, api_key_id, account_id, request_id, model, requested_model, actual_cost, total_cost, duration_ms, image_count, created_at)
+INSERT INTO usage_logs (user_id, api_key_id, account_id, request_id, model, requested_model, actual_cost, total_cost, duration_ms, image_count, image_size, created_at)
 VALUES
- ($1,$2,9001,$3,'gpt-image-2','gpt-image-2', 0.5, 0.5, 1200, 1, $6),
- ($1,$2,9001,$4,'gpt-image-2','gpt-image-2', 0.0, 0.0, NULL, 0, $6),
- ($1,$2,9002,$5,'gemini-3-pro-image','gemini-3-pro-image', 0.3, 0.3, 800, 1, $6)`,
+ ($1,$2,9001,$3,'gpt-image-2','gpt-image-2', 0.5, 0.5, 1200, 1, '1K', $6),
+ ($1,$2,9001,$4,'gpt-image-2','gpt-image-2', 0.0, 0.0, NULL, 0, NULL, $6),
+ ($1,$2,9002,$5,'gemini-3-pro-image','gemini-3-pro-image', 0.3, 0.3, 800, 1, '1K', $6)`,
 		user.ID, apiKey.ID, "req-a", "req-b", "req-c", now)
 	require.NoError(t, err)
 }
