@@ -36,6 +36,15 @@ VALUES
  ($1,$2,9002,$5,'gemini-3-pro-image','gemini-3-pro-image', 0.3, 0.3, 800, 1, '1K', $6)`,
 		user.ID, apiKey.ID, "req-a", "req-b", "req-c", now)
 	require.NoError(t, err)
+
+	// 直接写入共享 integrationDB 的行必须自行清理，否则会污染其它套件
+	// （如 dashboard 今日统计）的精确/增量计数断言。FK 安全顺序：先删引用方。
+	t.Cleanup(func() {
+		_, _ = integrationDB.Exec(`DELETE FROM usage_logs WHERE request_id IN ('req-a', 'req-b', 'req-c')`)
+		_, _ = integrationDB.Exec(`DELETE FROM accounts WHERE id IN (9001, 9002)`)
+		_, _ = integrationDB.Exec(`DELETE FROM api_keys WHERE id = $1`, apiKey.ID)
+		_, _ = integrationDB.Exec(`DELETE FROM users WHERE id = $1`, user.ID)
+	})
 }
 
 func TestOperationImageReportIntegration(t *testing.T) {
@@ -104,6 +113,7 @@ func TestOperationImageReportIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, models, "gpt-image-2")
 	grp := mustCreateGroup(t, integrationEntClient, &service.Group{Name: "img-report-test-group"})
+	t.Cleanup(func() { _, _ = integrationDB.Exec(`DELETE FROM groups WHERE id = $1`, grp.ID) })
 	groups, err := repo.ListGroups(ctx)
 	require.NoError(t, err)
 	var foundGroup bool
