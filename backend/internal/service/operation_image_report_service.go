@@ -13,6 +13,11 @@ const (
 
 	operationBucket5m = "5m"
 	operationBucket1h = "1h"
+
+	// 生图并发卡片的账号类别。
+	ImageAccountCategoryOpenAIOAuth = "openai_oauth" // OpenAI OAuth(codex) 生图账号
+	ImageAccountCategoryAdobe       = "adobe"        // Adobe 渠道(OpenAI API) 生图账号
+	ImageAccountCategoryGemini      = "gemini"       // Gemini 生图账号
 )
 
 // ImageReportSeriesFilter 是耗时/请求量曲线的公共筛选。
@@ -63,7 +68,7 @@ type ImageReportGroupRef struct {
 }
 
 type ImageConcurrencyCard struct {
-	Platform           string `json:"platform"`
+	Key                string `json:"key"` // "openai_oauth" | "adobe" | "gemini"
 	CurrentConcurrency int    `json:"current_concurrency"`
 	TotalConcurrency   int    `json:"total_concurrency"`
 	Available          bool   `json:"available"`
@@ -91,7 +96,7 @@ type OperationImageReportRepository interface {
 	LatencySeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageLatencyBucket, error)
 	RequestSeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageRequestBucket, error)
 	TodayBreakdown(ctx context.Context, start, end time.Time) ([]ImageTodayItem, error)
-	ListPlatformAccountConcurrency(ctx context.Context, platform string) ([]ImageAccountConcurrency, error)
+	ListImageAccountConcurrency(ctx context.Context, category string) ([]ImageAccountConcurrency, error)
 	ListAlertAccountConcurrency(ctx context.Context) ([]ImageAccountConcurrency, error)
 	DistinctImageModels(ctx context.Context, platform string) ([]string, error)
 	ListGroups(ctx context.Context) ([]ImageReportGroupRef, error)
@@ -196,14 +201,18 @@ func (s *OperationImageReportService) FilterOptions(ctx context.Context, platfor
 }
 
 func (s *OperationImageReportService) Concurrency(ctx context.Context) (*ImageConcurrencyOverview, error) {
-	platforms := []string{OperationPlatformOpenAI, OperationPlatformGemini}
-	overview := &ImageConcurrencyOverview{Cards: make([]ImageConcurrencyCard, 0, len(platforms))}
-	for _, p := range platforms {
-		accounts, err := s.repo.ListPlatformAccountConcurrency(ctx, p)
+	categories := []string{
+		ImageAccountCategoryOpenAIOAuth,
+		ImageAccountCategoryAdobe,
+		ImageAccountCategoryGemini,
+	}
+	overview := &ImageConcurrencyOverview{Cards: make([]ImageConcurrencyCard, 0, len(categories))}
+	for _, cat := range categories {
+		accounts, err := s.repo.ListImageAccountConcurrency(ctx, cat)
 		if err != nil {
-			return nil, fmt.Errorf("list %s account concurrency: %w", p, err)
+			return nil, fmt.Errorf("list %s account concurrency: %w", cat, err)
 		}
-		card := ImageConcurrencyCard{Platform: p}
+		card := ImageConcurrencyCard{Key: cat}
 		ids := make([]int64, 0, len(accounts))
 		for _, a := range accounts {
 			card.TotalConcurrency += a.Concurrency

@@ -98,18 +98,25 @@ func TestOperationImageReportTodayBreakdown(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestOperationImageReportListPlatformAccountConcurrency(t *testing.T) {
+func TestOperationImageReportListImageAccountConcurrency(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &operationImageReportRepository{sql: db}
-	mock.ExpectQuery("FROM accounts").
-		WithArgs("openai").
+	// adobe 类别的查询应包含渠道关联与模型限制谓词，且不带绑定参数。
+	mock.ExpectQuery("FROM accounts a").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "concurrency"}).
 			AddRow(int64(1), 3).AddRow(int64(2), 5))
-	got, err := repo.ListPlatformAccountConcurrency(context.Background(), "openai")
+	got, err := repo.ListImageAccountConcurrency(context.Background(), service.ImageAccountCategoryAdobe)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	require.Equal(t, 5, got[1].Concurrency)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOperationImageReportListImageAccountConcurrencyUnknownCategory(t *testing.T) {
+	db, _ := newSQLMock(t)
+	repo := &operationImageReportRepository{sql: db}
+	_, err := repo.ListImageAccountConcurrency(context.Background(), "bogus")
+	require.Error(t, err)
 }
 
 func TestOperationImageReportListAlertAccountConcurrency(t *testing.T) {

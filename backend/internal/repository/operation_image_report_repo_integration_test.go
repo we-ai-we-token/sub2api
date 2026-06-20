@@ -13,12 +13,13 @@ import (
 
 func seedImageReportData(t *testing.T, ctx context.Context) {
 	t.Helper()
-	// 一个 openai 账号（高用量告警），一个 gemini 账号。
+	// openai oauth 生图账号（模型限制含 gpt-image-2 + 高用量告警），gemini 生图账号（模型限制含 gemini 生图模型）。
+	// 「模型限制」即 credentials.model_mapping 的 key（白名单项）。
 	_, err := integrationDB.ExecContext(ctx, `
 INSERT INTO accounts (id, name, platform, type, credentials, extra, concurrency, status, created_at, updated_at)
 VALUES
- (9001, 'oa', 'openai', 'oauth', '{}'::jsonb, '{"codex_5h_used_percent":"95"}'::jsonb, 4, 'active', NOW(), NOW()),
- (9002, 'ge', 'gemini', 'oauth', '{}'::jsonb, '{}'::jsonb, 6, 'active', NOW(), NOW())
+ (9001, 'oa', 'openai', 'oauth', '{"model_mapping": {"gpt-image-2": "gpt-image-2"}}'::jsonb, '{"codex_5h_used_percent":"95"}'::jsonb, 4, 'active', NOW(), NOW()),
+ (9002, 'ge', 'gemini', 'oauth', '{"model_mapping": {"gemini-3-pro-image": "gemini-3-pro-image"}}'::jsonb, '{}'::jsonb, 6, 'active', NOW(), NOW())
 ON CONFLICT (id) DO NOTHING`)
 	require.NoError(t, err)
 
@@ -37,9 +38,17 @@ VALUES
 		user.ID, apiKey.ID, "req-a", "req-b", "req-c", now)
 	require.NoError(t, err)
 
+	// 生图失败落在 ops_error_logs（status_code>=400），不在 usage_logs。一条 openai 生图失败。
+	// error_type 用唯一标记便于清理；error_phase/error_type 为 NOT NULL 列。
+	_, err = integrationDB.ExecContext(ctx, `
+INSERT INTO ops_error_logs (platform, model, status_code, error_phase, error_type, created_at)
+VALUES ('openai', 'gpt-image-2', 500, 'upstream', 'img-report-test', $1)`, now)
+	require.NoError(t, err)
+
 	// 直接写入共享 integrationDB 的行必须自行清理，否则会污染其它套件
 	// （如 dashboard 今日统计）的精确/增量计数断言。FK 安全顺序：先删引用方。
 	t.Cleanup(func() {
+		_, _ = integrationDB.Exec(`DELETE FROM ops_error_logs WHERE error_type = 'img-report-test'`)
 		_, _ = integrationDB.Exec(`DELETE FROM usage_logs WHERE request_id IN ('req-a', 'req-b', 'req-c')`)
 		_, _ = integrationDB.Exec(`DELETE FROM accounts WHERE id IN (9001, 9002)`)
 		_, _ = integrationDB.Exec(`DELETE FROM api_keys WHERE id = $1`, apiKey.ID)
@@ -105,10 +114,19 @@ func TestOperationImageReportIntegration(t *testing.T) {
 	}
 	require.True(t, found)
 
-	// platform accounts + filters
-	openaiAccts, err := repo.ListPlatformAccountConcurrency(ctx, "openai")
+	// image-account concurrency by category
+	oauthAccts, err := repo.ListImageAccountConcurrency(ctx, service.ImageAccountCategoryOpenAIOAuth)
 	require.NoError(t, err)
-	require.NotEmpty(t, openaiAccts)
+	requireContainsAccount(t, oauthAccts, 9001, 4)
+
+	geminiAccts, err := repo.ListImageAccountConcurrency(ctx, service.ImageAccountCategoryGemini)
+	require.NoError(t, err)
+	requireContainsAccount(t, geminiAccts, 9002, 6)
+
+	// adobe 类别走 channel JOIN，至少要能对真实 schema 执行通过（校验 JOIN 列名正确）
+	_, err = repo.ListImageAccountConcurrency(ctx, service.ImageAccountCategoryAdobe)
+	require.NoError(t, err)
+
 	models, err := repo.DistinctImageModels(ctx, "openai")
 	require.NoError(t, err)
 	require.Contains(t, models, "gpt-image-2")
@@ -124,4 +142,15 @@ func TestOperationImageReportIntegration(t *testing.T) {
 		}
 	}
 	require.True(t, foundGroup, "ListGroups must contain the seeded group")
+}
+
+func requireContainsAccount(t *testing.T, accts []service.ImageAccountConcurrency, id int64, concurrency int) {
+	t.Helper()
+	for _, a := range accts {
+		if a.AccountID == id {
+			require.Equal(t, concurrency, a.Concurrency)
+			return
+		}
+	}
+	t.Fatalf("account %d not found in concurrency list", id)
 }
