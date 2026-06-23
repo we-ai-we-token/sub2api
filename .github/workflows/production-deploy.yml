@@ -102,7 +102,11 @@ jobs:
         run: |
           set -euo pipefail
           SHA="${GITHUB_SHA}"
-          docker build -f deploy/Dockerfile -t "sub2api:${SHA}" .
+          # --network=host: RUN steps (e.g. `apk add`) share the host net
+          # namespace, inheriting the lowered 1400 MTU. Without this the build's
+          # bridge network stays at 1500 and package downloads hit the same
+          # path-MTU black hole the host-MTU lowering was meant to dodge.
+          docker build --network=host -f deploy/Dockerfile -t "sub2api:${SHA}" .
           docker save "sub2api:${SHA}" | gzip -9 > "sub2api-${SHA}.tar.gz"
 
       - name: Upload image archive
