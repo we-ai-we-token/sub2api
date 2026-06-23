@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13: include group quality-billing fields (image_quality_billing/image_price_low/medium/high)
+const apiKeyAuthSnapshotVersion = 12 // v12: include exclusive group authorization fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -264,10 +264,6 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
 			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
 			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
-			ImageQualityBilling:             apiKey.Group.ImageQualityBilling,
-			ImagePriceLow:                   apiKey.Group.ImagePriceLow,
-			ImagePriceMedium:                apiKey.Group.ImagePriceMedium,
-			ImagePriceHigh:                  apiKey.Group.ImagePriceHigh,
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
@@ -341,10 +337,6 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice1K:                    snapshot.Group.ImagePrice1K,
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
-			ImageQualityBilling:             snapshot.Group.ImageQualityBilling,
-			ImagePriceLow:                   snapshot.Group.ImagePriceLow,
-			ImagePriceMedium:                snapshot.Group.ImagePriceMedium,
-			ImagePriceHigh:                  snapshot.Group.ImagePriceHigh,
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,

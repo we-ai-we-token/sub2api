@@ -944,8 +944,6 @@ export default {
     imageTotalPrice: '图片总价',
     imageCount: '图片张数',
     imageBillingSize: '计费尺寸',
-    imageQuality: '计费 quality',
-    imageQualityNotRecorded: '未记录',
     imageInputSize: '输入尺寸',
     imageOutputSize: '输出尺寸',
     imageOutputTokens: '图片输出 Token',
@@ -2328,8 +2326,6 @@ export default {
         allowImageGeneration: '允许当前分组生图',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',
-        qualityBilling: '按 quality 计费',
-        qualityBillingHint: '开启后改为按 OpenAI 返回的 quality（low/medium/high）计费，响应未返回时按 medium；关闭则按 1K/2K/4K 计费。某档留空则回退模型默认图片价。',
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'

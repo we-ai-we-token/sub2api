@@ -96,21 +96,6 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Bool("image_quality_billing").
-			Default(false).
-			Comment("是否按 OpenAI 返回的 quality（low/medium/high）计费，仅 openai 平台使用；false 时按 1K/2K/4K 计费"),
-		field.Float("image_price_low").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Float("image_price_medium").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Float("image_price_high").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

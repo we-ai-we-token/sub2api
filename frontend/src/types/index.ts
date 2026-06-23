@@ -518,11 +518,6 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
-  // 按 quality 计费配置（仅 openai 平台使用）
-  image_quality_billing: boolean
-  image_price_low: number | null
-  image_price_medium: number | null
-  image_price_high: number | null
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -641,10 +636,6 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
-  image_quality_billing?: boolean
-  image_price_low?: number | null
-  image_price_medium?: number | null
-  image_price_high?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -680,10 +671,6 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
-  image_quality_billing?: boolean
-  image_price_low?: number | null
-  image_price_medium?: number | null
-  image_price_high?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -1264,7 +1251,6 @@ export interface UsageLog {
   image_output_size: string | null
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null
-  image_quality: string | null
   image_output_tokens: number
   image_output_cost: number
 

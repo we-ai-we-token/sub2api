@@ -211,13 +211,8 @@ type CreateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
-	// 按 quality 计费配置（仅 openai 平台使用）
-	ImageQualityBilling bool
-	ImagePriceLow       *float64
-	ImagePriceMedium    *float64
-	ImagePriceHigh      *float64
-	ClaudeCodeOnly      bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID     *int64 // 降级分组 ID
+	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -257,13 +252,8 @@ type UpdateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
-	// 按 quality 计费配置（仅 openai 平台使用）
-	ImageQualityBilling *bool
-	ImagePriceLow       *float64
-	ImagePriceMedium    *float64
-	ImagePriceHigh      *float64
-	ClaudeCodeOnly      *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID     *int64 // 降级分组 ID
+	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -1823,9 +1813,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
-	imagePriceLow := normalizePrice(input.ImagePriceLow)
-	imagePriceMedium := normalizePrice(input.ImagePriceMedium)
-	imagePriceHigh := normalizePrice(input.ImagePriceHigh)
 	imageRateMultiplier := 1.0
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -1906,10 +1893,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
-		ImageQualityBilling:             input.ImageQualityBilling,
-		ImagePriceLow:                   imagePriceLow,
-		ImagePriceMedium:                imagePriceMedium,
-		ImagePriceHigh:                  imagePriceHigh,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -2104,19 +2087,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
-	}
-	// 按 quality 计费配置
-	if input.ImageQualityBilling != nil {
-		group.ImageQualityBilling = *input.ImageQualityBilling
-	}
-	if input.ImagePriceLow != nil {
-		group.ImagePriceLow = normalizePrice(input.ImagePriceLow)
-	}
-	if input.ImagePriceMedium != nil {
-		group.ImagePriceMedium = normalizePrice(input.ImagePriceMedium)
-	}
-	if input.ImagePriceHigh != nil {
-		group.ImagePriceHigh = normalizePrice(input.ImagePriceHigh)
 	}
 
 	// Claude Code 客户端限制

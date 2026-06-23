@@ -9,22 +9,18 @@ import (
 )
 
 type openAIImageOutputCounter struct {
-	seen          map[string]struct{}
-	seenSizes     map[string]string
-	seenQualities map[string]string
-	seenOrder     []string
-	dataSizes     []string
-	dataQualities []string
-	topQuality    string
-	count         int
-	maxDataCount  int
+	seen         map[string]struct{}
+	seenSizes    map[string]string
+	seenOrder    []string
+	dataSizes    []string
+	count        int
+	maxDataCount int
 }
 
 func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
 	return &openAIImageOutputCounter{
-		seen:          make(map[string]struct{}),
-		seenSizes:     make(map[string]string),
-		seenQualities: make(map[string]string),
+		seen:      make(map[string]struct{}),
+		seenSizes: make(map[string]string),
 	}
 }
 
@@ -57,25 +53,6 @@ func (c *openAIImageOutputCounter) Sizes() []string {
 	return sizes
 }
 
-// Quality 返回响应中采集到的首个非空 quality（low/medium/high）。
-// 优先级：逐个图片项 quality -> data 数组项 quality -> tools[].quality 回显。
-func (c *openAIImageOutputCounter) Quality() string {
-	if c == nil {
-		return ""
-	}
-	for _, key := range c.seenOrder {
-		if quality := strings.TrimSpace(c.seenQualities[key]); quality != "" {
-			return quality
-		}
-	}
-	for _, quality := range c.dataQualities {
-		if quality = strings.TrimSpace(quality); quality != "" {
-			return quality
-		}
-	}
-	return strings.TrimSpace(c.topQuality)
-}
-
 func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	if c == nil || len(body) == 0 || !gjson.ValidBytes(body) {
 		return
@@ -83,8 +60,6 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	c.addDataArray(gjson.GetBytes(body, "data"))
 	c.addOutputArray(gjson.GetBytes(body, "output"))
 	c.addOutputArray(gjson.GetBytes(body, "response.output"))
-	c.addToolsQuality(gjson.GetBytes(body, "tools"))
-	c.addToolsQuality(gjson.GetBytes(body, "response.tools"))
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
@@ -95,13 +70,10 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 	c.addDataArray(root.Get("data"))
 	eventType := strings.TrimSpace(root.Get("type").String())
 	switch eventType {
-	case "response.created", "response.in_progress":
-		c.addToolsQuality(root.Get("response.tools"))
 	case "response.output_item.done":
 		c.addImageOutputItem(root.Get("item"))
 	case "response.completed", "response.done":
 		c.addOutputArray(root.Get("response.output"))
-		c.addToolsQuality(root.Get("response.tools"))
 	case "image_generation.completed":
 		if item := root.Get("item"); item.Exists() {
 			c.addImageOutputItem(item)
@@ -132,38 +104,14 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 		c.maxDataCount = count
 	}
 	sizes := make([]string, 0, len(items))
-	qualities := make([]string, 0, len(items))
 	for _, item := range items {
 		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
 			sizes = append(sizes, size)
-		}
-		if quality := strings.TrimSpace(item.Get("quality").String()); quality != "" {
-			qualities = append(qualities, quality)
 		}
 	}
 	if len(sizes) > 0 {
 		c.dataSizes = sizes
 	}
-	if len(qualities) > 0 {
-		c.dataQualities = qualities
-	}
-}
-
-// addToolsQuality 从 tools 数组中提取 image_generation 工具回显的 quality。
-func (c *openAIImageOutputCounter) addToolsQuality(tools gjson.Result) {
-	if c.topQuality != "" || !tools.IsArray() {
-		return
-	}
-	tools.ForEach(func(_, item gjson.Result) bool {
-		if strings.TrimSpace(item.Get("type").String()) != "image_generation" {
-			return true
-		}
-		if quality := strings.TrimSpace(item.Get("quality").String()); quality != "" {
-			c.topQuality = quality
-			return false
-		}
-		return true
-	})
 }
 
 func (c *openAIImageOutputCounter) addOutputArray(output gjson.Result) {
@@ -208,13 +156,9 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		return
 	}
 	size := strings.TrimSpace(item.Get("size").String())
-	quality := strings.TrimSpace(item.Get("quality").String())
 	if _, exists := c.seen[key]; exists {
 		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
 			c.seenSizes[key] = size
-		}
-		if quality != "" && strings.TrimSpace(c.seenQualities[key]) == "" {
-			c.seenQualities[key] = quality
 		}
 		return
 	}
@@ -222,9 +166,6 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	c.seenOrder = append(c.seenOrder, key)
 	if size != "" {
 		c.seenSizes[key] = size
-	}
-	if quality != "" {
-		c.seenQualities[key] = quality
 	}
 	c.count++
 }
@@ -250,12 +191,6 @@ func collectOpenAIResponseImageOutputSizesFromJSONBytes(body []byte) []string {
 	return counter.Sizes()
 }
 
-func collectOpenAIResponseImageOutputQualityFromJSONBytes(body []byte) string {
-	counter := newOpenAIImageOutputCounter()
-	counter.AddJSONResponse(body)
-	return counter.Quality()
-}
-
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
@@ -266,10 +201,4 @@ func collectOpenAIImageOutputSizesFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Sizes()
-}
-
-func collectOpenAIImageOutputQualityFromSSEBody(body string) string {
-	counter := newOpenAIImageOutputCounter()
-	counter.AddSSEBody(body)
-	return counter.Quality()
 }

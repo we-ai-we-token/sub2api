@@ -940,8 +940,6 @@ export default {
     imageTotalPrice: 'Image total price',
     imageCount: 'Image count',
     imageBillingSize: 'Billing size',
-    imageQuality: 'Billing quality',
-    imageQualityNotRecorded: 'not recorded',
     imageInputSize: 'Input size',
     imageOutputSize: 'Output size',
     imageOutputTokens: 'Image Output Tokens',
@@ -2245,8 +2243,6 @@ export default {
         allowImageGeneration: 'Allow image generation for this group',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
-        qualityBilling: 'Bill by quality',
-        qualityBillingHint: 'When enabled, billing uses the quality returned by OpenAI (low/medium/high), falling back to medium when not returned; otherwise billing uses 1K/2K/4K. Empty tiers fall back to the model default image price.',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'

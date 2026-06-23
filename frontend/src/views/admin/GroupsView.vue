@@ -783,24 +783,7 @@
               />
               {{ t("admin.groups.imagePricing.independentMultiplier") }}
             </label>
-            <label
-              v-if="createForm.platform === 'openai'"
-              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-            >
-              <input
-                v-model="createForm.image_quality_billing"
-                type="checkbox"
-                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              {{ t("admin.groups.imagePricing.qualityBilling") }}
-            </label>
           </div>
-          <p
-            v-if="createForm.platform === 'openai'"
-            class="-mt-2 mb-3 text-xs text-gray-500 dark:text-gray-400"
-          >
-            {{ t("admin.groups.imagePricing.qualityBillingHint") }}
-          </p>
           <div
             v-if="createForm.image_rate_independent"
             class="mb-4"
@@ -817,45 +800,7 @@
               placeholder="1"
             />
           </div>
-          <div
-            v-if="createForm.platform === 'openai' && createForm.image_quality_billing"
-            class="grid grid-cols-3 gap-3"
-          >
-            <div>
-              <label class="input-label">Low ($)</label>
-              <input
-                v-model.number="createForm.image_price_low"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.134"
-              />
-            </div>
-            <div>
-              <label class="input-label">Medium ($)</label>
-              <input
-                v-model.number="createForm.image_price_medium"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">High ($)</label>
-              <input
-                v-model.number="createForm.image_price_high"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
-              />
-            </div>
-          </div>
-          <div v-else class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-3 gap-3">
             <div>
               <label class="input-label">1K ($)</label>
               <input
@@ -2126,24 +2071,7 @@
               />
               {{ t("admin.groups.imagePricing.independentMultiplier") }}
             </label>
-            <label
-              v-if="editForm.platform === 'openai'"
-              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-            >
-              <input
-                v-model="editForm.image_quality_billing"
-                type="checkbox"
-                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              {{ t("admin.groups.imagePricing.qualityBilling") }}
-            </label>
           </div>
-          <p
-            v-if="editForm.platform === 'openai'"
-            class="-mt-2 mb-3 text-xs text-gray-500 dark:text-gray-400"
-          >
-            {{ t("admin.groups.imagePricing.qualityBillingHint") }}
-          </p>
           <div
             v-if="editForm.image_rate_independent"
             class="mb-4"
@@ -2160,45 +2088,7 @@
               placeholder="1"
             />
           </div>
-          <div
-            v-if="editForm.platform === 'openai' && editForm.image_quality_billing"
-            class="grid grid-cols-3 gap-3"
-          >
-            <div>
-              <label class="input-label">Low ($)</label>
-              <input
-                v-model.number="editForm.image_price_low"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.134"
-              />
-            </div>
-            <div>
-              <label class="input-label">Medium ($)</label>
-              <input
-                v-model.number="editForm.image_price_medium"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">High ($)</label>
-              <input
-                v-model.number="editForm.image_price_high"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
-              />
-            </div>
-          </div>
-          <div v-else class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-3 gap-3">
             <div>
               <label class="input-label">1K ($)</label>
               <input
@@ -3450,11 +3340,6 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
-  // 按 quality 计费配置（仅 openai 平台使用）
-  image_quality_billing: false,
-  image_price_low: null as number | null,
-  image_price_medium: null as number | null,
-  image_price_high: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3786,11 +3671,6 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
-  // 按 quality 计费配置（仅 openai 平台使用）
-  image_quality_billing: false,
-  image_price_low: null as number | null,
-  image_price_medium: null as number | null,
-  image_price_high: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3818,29 +3698,18 @@ const editForm = reactive({
 });
 
 type ImagePricingFormState = {
-  platform: GroupPlatform;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
-  image_quality_billing: boolean;
   image_price_1k: number | string | null;
   image_price_2k: number | string | null;
   image_price_4k: number | string | null;
-  image_price_low: number | string | null;
-  image_price_medium: number | string | null;
-  image_price_high: number | string | null;
 };
 
 const imagePricingTiers = [
   { key: "image_price_1k", label: "1K" },
   { key: "image_price_2k", label: "2K" },
   { key: "image_price_4k", label: "4K" },
-] as const;
-
-const imageQualityPricingTiers = [
-  { key: "image_price_low", label: "Low" },
-  { key: "image_price_medium", label: "Medium" },
-  { key: "image_price_high", label: "High" },
 ] as const;
 
 const normalizePreviewNumber = (value: number | string | null | undefined, fallback = 0) => {
@@ -3866,11 +3735,7 @@ const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
   const multiplier = form.image_rate_independent
     ? normalizePreviewNumber(form.image_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
-  const tiers =
-    form.platform === "openai" && form.image_quality_billing
-      ? imageQualityPricingTiers
-      : imagePricingTiers;
-  return tiers.map((tier) => {
+  return imagePricingTiers.map((tier) => {
     const basePrice = normalizePreviewNumber(form[tier.key]);
     return {
       label: tier.label,
@@ -4183,10 +4048,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
-  editForm.image_quality_billing = group.image_quality_billing ?? false;
-  editForm.image_price_low = group.image_price_low;
-  editForm.image_price_medium = group.image_price_medium;
-  editForm.image_price_high = group.image_price_high;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =

@@ -34,13 +34,6 @@ type Group struct {
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
 
-	// 按 quality 计费配置（仅 openai 平台使用）。
-	// ImageQualityBilling=true 时改用 quality（low/medium/high）单价，否则按 1K/2K/4K 计费。
-	ImageQualityBilling bool
-	ImagePriceLow       *float64
-	ImagePriceMedium    *float64
-	ImagePriceHigh      *float64
-
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64

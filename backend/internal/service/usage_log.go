@@ -173,7 +173,6 @@ type UsageLog struct {
 	ImageOutputSize    *string
 	ImageSizeSource    *string
 	ImageSizeBreakdown map[string]int
-	ImageQuality       *string
 	MediaType          *string
 
 	CreatedAt time.Time

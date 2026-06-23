@@ -56,14 +56,6 @@ const (
 	FieldImagePrice2k = "image_price_2k"
 	// FieldImagePrice4k holds the string denoting the image_price_4k field in the database.
 	FieldImagePrice4k = "image_price_4k"
-	// FieldImageQualityBilling holds the string denoting the image_quality_billing field in the database.
-	FieldImageQualityBilling = "image_quality_billing"
-	// FieldImagePriceLow holds the string denoting the image_price_low field in the database.
-	FieldImagePriceLow = "image_price_low"
-	// FieldImagePriceMedium holds the string denoting the image_price_medium field in the database.
-	FieldImagePriceMedium = "image_price_medium"
-	// FieldImagePriceHigh holds the string denoting the image_price_high field in the database.
-	FieldImagePriceHigh = "image_price_high"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -189,10 +181,6 @@ var Columns = []string{
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
-	FieldImageQualityBilling,
-	FieldImagePriceLow,
-	FieldImagePriceMedium,
-	FieldImagePriceHigh,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -269,8 +257,6 @@ var (
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
-	// DefaultImageQualityBilling holds the default value on creation for the "image_quality_billing" field.
-	DefaultImageQualityBilling bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -405,26 +391,6 @@ func ByImagePrice2k(opts ...sql.OrderTermOption) OrderOption {
 // ByImagePrice4k orders the results by the image_price_4k field.
 func ByImagePrice4k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImagePrice4k, opts...).ToFunc()
-}
-
-// ByImageQualityBilling orders the results by the image_quality_billing field.
-func ByImageQualityBilling(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImageQualityBilling, opts...).ToFunc()
-}
-
-// ByImagePriceLow orders the results by the image_price_low field.
-func ByImagePriceLow(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImagePriceLow, opts...).ToFunc()
-}
-
-// ByImagePriceMedium orders the results by the image_price_medium field.
-func ByImagePriceMedium(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImagePriceMedium, opts...).ToFunc()
-}
-
-// ByImagePriceHigh orders the results by the image_price_high field.
-func ByImagePriceHigh(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImagePriceHigh, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.
