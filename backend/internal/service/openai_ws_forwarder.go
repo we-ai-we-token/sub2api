@@ -2423,6 +2423,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		UpstreamModel:    mappedModel,
 		ImageCount:       imageCounter.Count(),
 		ImageOutputSizes: imageCounter.Sizes(),
+		ImageQuality:     imageCounter.Quality(),
 		ServiceTier:      extractOpenAIServiceTier(reqBody),
 		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, originalModel),
 		Stream:           reqStream,
@@ -3318,6 +3319,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.ImageSize = imageSizeTier
 					result.ImageInputSize = imageInputSize
 					result.ImageOutputSizes = imageCounter.Sizes()
+					result.ImageQuality = imageCounter.Quality()
 					result.BillingModel = imageBillingModel
 				}
 				return result, nil

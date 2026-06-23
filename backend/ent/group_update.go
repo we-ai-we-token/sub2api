@@ -405,6 +405,101 @@ func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
 	return _u
 }
 
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (_u *GroupUpdate) SetImageQualityBilling(v bool) *GroupUpdate {
+	_u.mutation.SetImageQualityBilling(v)
+	return _u
+}
+
+// SetNillableImageQualityBilling sets the "image_quality_billing" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageQualityBilling(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageQualityBilling(*v)
+	}
+	return _u
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (_u *GroupUpdate) SetImagePriceLow(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePriceLow()
+	_u.mutation.SetImagePriceLow(v)
+	return _u
+}
+
+// SetNillableImagePriceLow sets the "image_price_low" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePriceLow(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePriceLow(*v)
+	}
+	return _u
+}
+
+// AddImagePriceLow adds value to the "image_price_low" field.
+func (_u *GroupUpdate) AddImagePriceLow(v float64) *GroupUpdate {
+	_u.mutation.AddImagePriceLow(v)
+	return _u
+}
+
+// ClearImagePriceLow clears the value of the "image_price_low" field.
+func (_u *GroupUpdate) ClearImagePriceLow() *GroupUpdate {
+	_u.mutation.ClearImagePriceLow()
+	return _u
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (_u *GroupUpdate) SetImagePriceMedium(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePriceMedium()
+	_u.mutation.SetImagePriceMedium(v)
+	return _u
+}
+
+// SetNillableImagePriceMedium sets the "image_price_medium" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePriceMedium(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePriceMedium(*v)
+	}
+	return _u
+}
+
+// AddImagePriceMedium adds value to the "image_price_medium" field.
+func (_u *GroupUpdate) AddImagePriceMedium(v float64) *GroupUpdate {
+	_u.mutation.AddImagePriceMedium(v)
+	return _u
+}
+
+// ClearImagePriceMedium clears the value of the "image_price_medium" field.
+func (_u *GroupUpdate) ClearImagePriceMedium() *GroupUpdate {
+	_u.mutation.ClearImagePriceMedium()
+	return _u
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (_u *GroupUpdate) SetImagePriceHigh(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePriceHigh()
+	_u.mutation.SetImagePriceHigh(v)
+	return _u
+}
+
+// SetNillableImagePriceHigh sets the "image_price_high" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePriceHigh(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePriceHigh(*v)
+	}
+	return _u
+}
+
+// AddImagePriceHigh adds value to the "image_price_high" field.
+func (_u *GroupUpdate) AddImagePriceHigh(v float64) *GroupUpdate {
+	_u.mutation.AddImagePriceHigh(v)
+	return _u
+}
+
+// ClearImagePriceHigh clears the value of the "image_price_high" field.
+func (_u *GroupUpdate) ClearImagePriceHigh() *GroupUpdate {
+	_u.mutation.ClearImagePriceHigh()
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1063,6 +1158,36 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageQualityBilling(); ok {
+		_spec.SetField(group.FieldImageQualityBilling, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImagePriceLow(); ok {
+		_spec.SetField(group.FieldImagePriceLow, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceLow(); ok {
+		_spec.AddField(group.FieldImagePriceLow, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceLowCleared() {
+		_spec.ClearField(group.FieldImagePriceLow, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePriceMedium(); ok {
+		_spec.SetField(group.FieldImagePriceMedium, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceMedium(); ok {
+		_spec.AddField(group.FieldImagePriceMedium, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceMediumCleared() {
+		_spec.ClearField(group.FieldImagePriceMedium, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePriceHigh(); ok {
+		_spec.SetField(group.FieldImagePriceHigh, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceHigh(); ok {
+		_spec.AddField(group.FieldImagePriceHigh, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceHighCleared() {
+		_spec.ClearField(group.FieldImagePriceHigh, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1818,6 +1943,101 @@ func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
 	return _u
 }
 
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (_u *GroupUpdateOne) SetImageQualityBilling(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageQualityBilling(v)
+	return _u
+}
+
+// SetNillableImageQualityBilling sets the "image_quality_billing" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageQualityBilling(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageQualityBilling(*v)
+	}
+	return _u
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (_u *GroupUpdateOne) SetImagePriceLow(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePriceLow()
+	_u.mutation.SetImagePriceLow(v)
+	return _u
+}
+
+// SetNillableImagePriceLow sets the "image_price_low" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePriceLow(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePriceLow(*v)
+	}
+	return _u
+}
+
+// AddImagePriceLow adds value to the "image_price_low" field.
+func (_u *GroupUpdateOne) AddImagePriceLow(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePriceLow(v)
+	return _u
+}
+
+// ClearImagePriceLow clears the value of the "image_price_low" field.
+func (_u *GroupUpdateOne) ClearImagePriceLow() *GroupUpdateOne {
+	_u.mutation.ClearImagePriceLow()
+	return _u
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (_u *GroupUpdateOne) SetImagePriceMedium(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePriceMedium()
+	_u.mutation.SetImagePriceMedium(v)
+	return _u
+}
+
+// SetNillableImagePriceMedium sets the "image_price_medium" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePriceMedium(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePriceMedium(*v)
+	}
+	return _u
+}
+
+// AddImagePriceMedium adds value to the "image_price_medium" field.
+func (_u *GroupUpdateOne) AddImagePriceMedium(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePriceMedium(v)
+	return _u
+}
+
+// ClearImagePriceMedium clears the value of the "image_price_medium" field.
+func (_u *GroupUpdateOne) ClearImagePriceMedium() *GroupUpdateOne {
+	_u.mutation.ClearImagePriceMedium()
+	return _u
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (_u *GroupUpdateOne) SetImagePriceHigh(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePriceHigh()
+	_u.mutation.SetImagePriceHigh(v)
+	return _u
+}
+
+// SetNillableImagePriceHigh sets the "image_price_high" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePriceHigh(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePriceHigh(*v)
+	}
+	return _u
+}
+
+// AddImagePriceHigh adds value to the "image_price_high" field.
+func (_u *GroupUpdateOne) AddImagePriceHigh(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePriceHigh(v)
+	return _u
+}
+
+// ClearImagePriceHigh clears the value of the "image_price_high" field.
+func (_u *GroupUpdateOne) ClearImagePriceHigh() *GroupUpdateOne {
+	_u.mutation.ClearImagePriceHigh()
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2506,6 +2726,36 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageQualityBilling(); ok {
+		_spec.SetField(group.FieldImageQualityBilling, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImagePriceLow(); ok {
+		_spec.SetField(group.FieldImagePriceLow, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceLow(); ok {
+		_spec.AddField(group.FieldImagePriceLow, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceLowCleared() {
+		_spec.ClearField(group.FieldImagePriceLow, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePriceMedium(); ok {
+		_spec.SetField(group.FieldImagePriceMedium, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceMedium(); ok {
+		_spec.AddField(group.FieldImagePriceMedium, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceMediumCleared() {
+		_spec.ClearField(group.FieldImagePriceMedium, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePriceHigh(); ok {
+		_spec.SetField(group.FieldImagePriceHigh, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImagePriceHigh(); ok {
+		_spec.AddField(group.FieldImagePriceHigh, field.TypeFloat64, value)
+	}
+	if _u.mutation.ImagePriceHighCleared() {
+		_spec.ClearField(group.FieldImagePriceHigh, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
