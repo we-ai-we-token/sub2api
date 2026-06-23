@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12: include exclusive group authorization fields
+const apiKeyAuthSnapshotVersion = 13 // v13: include group quality-billing fields (image_quality_billing/image_price_low/medium/high)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

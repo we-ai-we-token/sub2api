@@ -74,6 +74,27 @@ export const formatImageSizeSource = (row: ImageUsageRow | null | undefined, t: 
 export const hasImageQuality = (row: ImageUsageRow | null | undefined): boolean =>
   trimmed(row?.image_quality) !== ''
 
+/**
+ * 计费模式后缀（参数值），如 "-low" / "-1K"。
+ * 按 quality 计费的生图返回质量档（low/medium/high）；
+ * 否则对生图返回计费分辨率档（1K/2K/4K）；其余返回空串。
+ */
+export const formatBillingModeParamSuffix = (
+  row: (ImageUsageRow & { image_count?: number | null }) | null | undefined,
+): string => {
+  const quality = trimmed(row?.image_quality)
+  if (quality) {
+    return `-${quality}`
+  }
+  if ((row?.image_count ?? 0) > 0) {
+    const size = trimmed(row?.image_size)
+    if (knownImageBillingSizes.has(size)) {
+      return `-${size}`
+    }
+  }
+  return ''
+}
+
 export const formatImageQuality = (row: ImageUsageRow | null | undefined, t: Translate): string => {
   const quality = trimmed(row?.image_quality)
   return quality || t('usage.imageQualityNotRecorded')
