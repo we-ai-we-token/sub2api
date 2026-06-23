@@ -223,7 +223,7 @@
           <template #cell-billing_mode="{ row }">
             <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
                   :class="getBillingModeBadgeClass(getDisplayBillingMode(row))">
-              {{ getBillingModeLabel(getDisplayBillingMode(row), t) }}
+              {{ getBillingModeLabel(getDisplayBillingMode(row), t) }}{{ formatBillingModeParamSuffix(row) }}
             </span>
           </template>
 
@@ -649,6 +649,7 @@ import {
   formatImageSizeSource,
   formatImageQuality,
   hasImageQuality,
+  formatBillingModeParamSuffix,
   hasImageOutputTokens,
   textOutputTokens,
   hasImageOutputCost,
@@ -1008,7 +1009,8 @@ const exportToCSV = async () => {
         formatReasoningEffort(log.reasoning_effort),
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
-        getBillingModeLabel(getDisplayBillingMode(log), t),
+        getBillingModeLabel(getDisplayBillingMode(log), t) +
+          formatBillingModeParamSuffix(log),
         log.input_tokens,
         log.output_tokens,
         log.cache_read_tokens,
