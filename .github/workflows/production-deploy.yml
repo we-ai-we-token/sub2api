@@ -74,6 +74,20 @@ jobs:
             exit 1
           fi
 
+      - name: Lower runner MTU (work around path-MTU black hole to PROD)
+        run: |
+          # Big-packet SSH transfers ('cat > file') stall then drop with
+          # "Connection closed by host port 22" while small packets (keyscan,
+          # plain commands) succeed — the signature of a path-MTU black hole on
+          # the runner⇄host route. Shrinking the runner's MTU makes it send
+          # smaller packets AND advertise a smaller MSS (so the server replies
+          # small too), dodging the black hole both ways.
+          IFACE="$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)"
+          IFACE="${IFACE:-eth0}"
+          echo "Lowering MTU on ${IFACE} to 1400"
+          sudo ip link set dev "${IFACE}" mtu 1400 || true
+          ip link show "${IFACE}" | grep -o 'mtu [0-9]*' || true
+
       - name: Upload production deployment files
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
