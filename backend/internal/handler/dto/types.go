@@ -104,6 +104,12 @@ type Group struct {
 	ImagePrice2K         *float64 `json:"image_price_2k"`
 	ImagePrice4K         *float64 `json:"image_price_4k"`
 
+	// 按 quality 计费配置（仅 openai 平台使用）
+	ImageQualityBilling bool     `json:"image_quality_billing"`
+	ImagePriceLow       *float64 `json:"image_price_low"`
+	ImagePriceMedium    *float64 `json:"image_price_medium"`
+	ImagePriceHigh      *float64 `json:"image_price_high"`
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
@@ -476,6 +482,7 @@ type UsageLog struct {
 	ImageOutputCost    float64        `json:"image_output_cost"`
 	ImageSizeSource    *string        `json:"image_size_source"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
+	ImageQuality       *string        `json:"image_quality"`
 	MediaType          *string        `json:"media_type"`
 
 	// User-Agent

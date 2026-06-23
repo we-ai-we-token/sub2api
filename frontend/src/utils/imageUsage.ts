@@ -29,7 +29,12 @@ const knownImageBillingSizes = new Set(['1K', '2K', '4K', 'mixed'])
 
 type ImageUsageRow = Pick<
   UsageLog,
-  'image_size' | 'image_input_size' | 'image_output_size' | 'image_size_source' | 'image_size_breakdown'
+  | 'image_size'
+  | 'image_input_size'
+  | 'image_output_size'
+  | 'image_size_source'
+  | 'image_size_breakdown'
+  | 'image_quality'
 >
 
 const trimmed = (value: string | null | undefined): string => value?.trim() ?? ''
@@ -64,6 +69,14 @@ export const formatImageSizeSource = (row: ImageUsageRow | null | undefined, t: 
     return t('usage.imageSizeSourceLegacy')
   }
   return t('usage.imageSizeSourceMissing')
+}
+
+export const hasImageQuality = (row: ImageUsageRow | null | undefined): boolean =>
+  trimmed(row?.image_quality) !== ''
+
+export const formatImageQuality = (row: ImageUsageRow | null | undefined, t: Translate): string => {
+  const quality = trimmed(row?.image_quality)
+  return quality || t('usage.imageQualityNotRecorded')
 }
 
 export const formatImageSizeBreakdown = (row: ImageUsageRow | null | undefined): string => {

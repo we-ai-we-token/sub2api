@@ -301,6 +301,62 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (_c *GroupCreate) SetImageQualityBilling(v bool) *GroupCreate {
+	_c.mutation.SetImageQualityBilling(v)
+	return _c
+}
+
+// SetNillableImageQualityBilling sets the "image_quality_billing" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageQualityBilling(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageQualityBilling(*v)
+	}
+	return _c
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (_c *GroupCreate) SetImagePriceLow(v float64) *GroupCreate {
+	_c.mutation.SetImagePriceLow(v)
+	return _c
+}
+
+// SetNillableImagePriceLow sets the "image_price_low" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImagePriceLow(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetImagePriceLow(*v)
+	}
+	return _c
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (_c *GroupCreate) SetImagePriceMedium(v float64) *GroupCreate {
+	_c.mutation.SetImagePriceMedium(v)
+	return _c
+}
+
+// SetNillableImagePriceMedium sets the "image_price_medium" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImagePriceMedium(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetImagePriceMedium(*v)
+	}
+	return _c
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (_c *GroupCreate) SetImagePriceHigh(v float64) *GroupCreate {
+	_c.mutation.SetImagePriceHigh(v)
+	return _c
+}
+
+// SetNillableImagePriceHigh sets the "image_price_high" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImagePriceHigh(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetImagePriceHigh(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -672,6 +728,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.ImageQualityBilling(); !ok {
+		v := group.DefaultImageQualityBilling
+		_c.mutation.SetImageQualityBilling(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -780,6 +840,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.ImageQualityBilling(); !ok {
+		return &ValidationError{Name: "image_quality_billing", err: errors.New(`ent: missing required field "Group.image_quality_billing"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -928,6 +991,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.ImageQualityBilling(); ok {
+		_spec.SetField(group.FieldImageQualityBilling, field.TypeBool, value)
+		_node.ImageQualityBilling = value
+	}
+	if value, ok := _c.mutation.ImagePriceLow(); ok {
+		_spec.SetField(group.FieldImagePriceLow, field.TypeFloat64, value)
+		_node.ImagePriceLow = &value
+	}
+	if value, ok := _c.mutation.ImagePriceMedium(); ok {
+		_spec.SetField(group.FieldImagePriceMedium, field.TypeFloat64, value)
+		_node.ImagePriceMedium = &value
+	}
+	if value, ok := _c.mutation.ImagePriceHigh(); ok {
+		_spec.SetField(group.FieldImagePriceHigh, field.TypeFloat64, value)
+		_node.ImagePriceHigh = &value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1472,6 +1551,90 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (u *GroupUpsert) SetImageQualityBilling(v bool) *GroupUpsert {
+	u.Set(group.FieldImageQualityBilling, v)
+	return u
+}
+
+// UpdateImageQualityBilling sets the "image_quality_billing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageQualityBilling() *GroupUpsert {
+	u.SetExcluded(group.FieldImageQualityBilling)
+	return u
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (u *GroupUpsert) SetImagePriceLow(v float64) *GroupUpsert {
+	u.Set(group.FieldImagePriceLow, v)
+	return u
+}
+
+// UpdateImagePriceLow sets the "image_price_low" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePriceLow() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePriceLow)
+	return u
+}
+
+// AddImagePriceLow adds v to the "image_price_low" field.
+func (u *GroupUpsert) AddImagePriceLow(v float64) *GroupUpsert {
+	u.Add(group.FieldImagePriceLow, v)
+	return u
+}
+
+// ClearImagePriceLow clears the value of the "image_price_low" field.
+func (u *GroupUpsert) ClearImagePriceLow() *GroupUpsert {
+	u.SetNull(group.FieldImagePriceLow)
+	return u
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (u *GroupUpsert) SetImagePriceMedium(v float64) *GroupUpsert {
+	u.Set(group.FieldImagePriceMedium, v)
+	return u
+}
+
+// UpdateImagePriceMedium sets the "image_price_medium" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePriceMedium() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePriceMedium)
+	return u
+}
+
+// AddImagePriceMedium adds v to the "image_price_medium" field.
+func (u *GroupUpsert) AddImagePriceMedium(v float64) *GroupUpsert {
+	u.Add(group.FieldImagePriceMedium, v)
+	return u
+}
+
+// ClearImagePriceMedium clears the value of the "image_price_medium" field.
+func (u *GroupUpsert) ClearImagePriceMedium() *GroupUpsert {
+	u.SetNull(group.FieldImagePriceMedium)
+	return u
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (u *GroupUpsert) SetImagePriceHigh(v float64) *GroupUpsert {
+	u.Set(group.FieldImagePriceHigh, v)
+	return u
+}
+
+// UpdateImagePriceHigh sets the "image_price_high" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePriceHigh() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePriceHigh)
+	return u
+}
+
+// AddImagePriceHigh adds v to the "image_price_high" field.
+func (u *GroupUpsert) AddImagePriceHigh(v float64) *GroupUpsert {
+	u.Add(group.FieldImagePriceHigh, v)
+	return u
+}
+
+// ClearImagePriceHigh clears the value of the "image_price_high" field.
+func (u *GroupUpsert) ClearImagePriceHigh() *GroupUpsert {
+	u.SetNull(group.FieldImagePriceHigh)
 	return u
 }
 
@@ -2124,6 +2287,104 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (u *GroupUpsertOne) SetImageQualityBilling(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageQualityBilling(v)
+	})
+}
+
+// UpdateImageQualityBilling sets the "image_quality_billing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageQualityBilling() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageQualityBilling()
+	})
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (u *GroupUpsertOne) SetImagePriceLow(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceLow(v)
+	})
+}
+
+// AddImagePriceLow adds v to the "image_price_low" field.
+func (u *GroupUpsertOne) AddImagePriceLow(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceLow(v)
+	})
+}
+
+// UpdateImagePriceLow sets the "image_price_low" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePriceLow() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceLow()
+	})
+}
+
+// ClearImagePriceLow clears the value of the "image_price_low" field.
+func (u *GroupUpsertOne) ClearImagePriceLow() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceLow()
+	})
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (u *GroupUpsertOne) SetImagePriceMedium(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceMedium(v)
+	})
+}
+
+// AddImagePriceMedium adds v to the "image_price_medium" field.
+func (u *GroupUpsertOne) AddImagePriceMedium(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceMedium(v)
+	})
+}
+
+// UpdateImagePriceMedium sets the "image_price_medium" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePriceMedium() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceMedium()
+	})
+}
+
+// ClearImagePriceMedium clears the value of the "image_price_medium" field.
+func (u *GroupUpsertOne) ClearImagePriceMedium() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceMedium()
+	})
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (u *GroupUpsertOne) SetImagePriceHigh(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceHigh(v)
+	})
+}
+
+// AddImagePriceHigh adds v to the "image_price_high" field.
+func (u *GroupUpsertOne) AddImagePriceHigh(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceHigh(v)
+	})
+}
+
+// UpdateImagePriceHigh sets the "image_price_high" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePriceHigh() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceHigh()
+	})
+}
+
+// ClearImagePriceHigh clears the value of the "image_price_high" field.
+func (u *GroupUpsertOne) ClearImagePriceHigh() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceHigh()
 	})
 }
 
@@ -2979,6 +3240,104 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageQualityBilling sets the "image_quality_billing" field.
+func (u *GroupUpsertBulk) SetImageQualityBilling(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageQualityBilling(v)
+	})
+}
+
+// UpdateImageQualityBilling sets the "image_quality_billing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageQualityBilling() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageQualityBilling()
+	})
+}
+
+// SetImagePriceLow sets the "image_price_low" field.
+func (u *GroupUpsertBulk) SetImagePriceLow(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceLow(v)
+	})
+}
+
+// AddImagePriceLow adds v to the "image_price_low" field.
+func (u *GroupUpsertBulk) AddImagePriceLow(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceLow(v)
+	})
+}
+
+// UpdateImagePriceLow sets the "image_price_low" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePriceLow() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceLow()
+	})
+}
+
+// ClearImagePriceLow clears the value of the "image_price_low" field.
+func (u *GroupUpsertBulk) ClearImagePriceLow() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceLow()
+	})
+}
+
+// SetImagePriceMedium sets the "image_price_medium" field.
+func (u *GroupUpsertBulk) SetImagePriceMedium(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceMedium(v)
+	})
+}
+
+// AddImagePriceMedium adds v to the "image_price_medium" field.
+func (u *GroupUpsertBulk) AddImagePriceMedium(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceMedium(v)
+	})
+}
+
+// UpdateImagePriceMedium sets the "image_price_medium" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePriceMedium() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceMedium()
+	})
+}
+
+// ClearImagePriceMedium clears the value of the "image_price_medium" field.
+func (u *GroupUpsertBulk) ClearImagePriceMedium() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceMedium()
+	})
+}
+
+// SetImagePriceHigh sets the "image_price_high" field.
+func (u *GroupUpsertBulk) SetImagePriceHigh(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceHigh(v)
+	})
+}
+
+// AddImagePriceHigh adds v to the "image_price_high" field.
+func (u *GroupUpsertBulk) AddImagePriceHigh(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImagePriceHigh(v)
+	})
+}
+
+// UpdateImagePriceHigh sets the "image_price_high" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePriceHigh() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceHigh()
+	})
+}
+
+// ClearImagePriceHigh clears the value of the "image_price_high" field.
+func (u *GroupUpsertBulk) ClearImagePriceHigh() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceHigh()
 	})
 }
 

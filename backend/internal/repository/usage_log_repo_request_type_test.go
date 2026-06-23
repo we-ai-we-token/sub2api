@@ -91,6 +91,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
+			sqlmock.AnyArg(), // image_quality
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
 
@@ -174,6 +175,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
+			sqlmock.AnyArg(), // image_quality
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
 
@@ -641,11 +643,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			now,
+			sql.NullString{Valid: true, String: "high"},
 		}})
 		require.NoError(t, err)
 		require.Equal(t, 2, log.ImageCount)
 		require.NotNil(t, log.ImageSize)
 		require.Equal(t, "4K", *log.ImageSize)
+		require.NotNil(t, log.ImageQuality)
+		require.Equal(t, "high", *log.ImageQuality)
 		require.NotNil(t, log.ImageInputSize)
 		require.Equal(t, "1024x1024", *log.ImageInputSize)
 		require.NotNil(t, log.ImageOutputSize)
@@ -709,6 +714,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			now,
+			sql.NullString{},
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -761,6 +767,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			now,
+			sql.NullString{},
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -813,6 +820,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			now,
+			sql.NullString{},
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)

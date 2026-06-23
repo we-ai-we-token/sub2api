@@ -59,6 +59,14 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
+	// 是否按 OpenAI 返回的 quality（low/medium/high）计费，仅 openai 平台使用；false 时按 1K/2K/4K 计费
+	ImageQualityBilling bool `json:"image_quality_billing,omitempty"`
+	// ImagePriceLow holds the value of the "image_price_low" field.
+	ImagePriceLow *float64 `json:"image_price_low,omitempty"`
+	// ImagePriceMedium holds the value of the "image_price_medium" field.
+	ImagePriceMedium *float64 `json:"image_price_medium,omitempty"`
+	// ImagePriceHigh holds the value of the "image_price_high" field.
+	ImagePriceHigh *float64 `json:"image_price_high,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -197,9 +205,9 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldImageQualityBilling, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
+		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldImagePriceLow, group.FieldImagePriceMedium, group.FieldImagePriceHigh:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -355,6 +363,33 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ImagePrice4k = new(float64)
 				*_m.ImagePrice4k = value.Float64
+			}
+		case group.FieldImageQualityBilling:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_quality_billing", values[i])
+			} else if value.Valid {
+				_m.ImageQualityBilling = value.Bool
+			}
+		case group.FieldImagePriceLow:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_price_low", values[i])
+			} else if value.Valid {
+				_m.ImagePriceLow = new(float64)
+				*_m.ImagePriceLow = value.Float64
+			}
+		case group.FieldImagePriceMedium:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_price_medium", values[i])
+			} else if value.Valid {
+				_m.ImagePriceMedium = new(float64)
+				*_m.ImagePriceMedium = value.Float64
+			}
+		case group.FieldImagePriceHigh:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_price_high", values[i])
+			} else if value.Valid {
+				_m.ImagePriceHigh = new(float64)
+				*_m.ImagePriceHigh = value.Float64
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -605,6 +640,24 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	if v := _m.ImagePrice4k; v != nil {
 		builder.WriteString("image_price_4k=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("image_quality_billing=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageQualityBilling))
+	builder.WriteString(", ")
+	if v := _m.ImagePriceLow; v != nil {
+		builder.WriteString("image_price_low=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ImagePriceMedium; v != nil {
+		builder.WriteString("image_price_medium=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ImagePriceHigh; v != nil {
+		builder.WriteString("image_price_high=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
