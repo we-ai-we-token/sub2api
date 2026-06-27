@@ -18,15 +18,9 @@
               {{ g.name }}
             </option>
           </select>
-          <span v-if="selectedGroup" class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <PlatformIcon :platform="selectedGroup.platform as GroupPlatform" size="xs" />
+          <span v-if="selectedGroup" class="inline-flex items-center gap-2 text-base font-semibold text-gray-700 dark:text-gray-200">
+            <PlatformIcon :platform="selectedGroup.platform as GroupPlatform" size="md" />
             {{ selectedGroup.platform }}
-            <span
-              v-if="selectedGroup.is_exclusive"
-              class="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-purple-600 dark:bg-purple-900/40 dark:text-purple-300"
-            >
-              {{ t('modelPlaza.exclusive') }}
-            </span>
           </span>
         </div>
 
@@ -133,24 +127,41 @@
             >
               <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ m.name }}</td>
               <td class="px-4 py-3">
-                <span
-                  :class="[
-                    'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
-                    platformBadgeClass(m.platform),
-                  ]"
-                >
-                  <PlatformIcon :platform="m.platform as GroupPlatform" size="xs" />
-                  {{ m.platform }}
-                </span>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span
+                    :class="[
+                      'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
+                      platformBadgeClass(m.platform),
+                    ]"
+                  >
+                    <PlatformIcon :platform="m.platform as GroupPlatform" size="xs" />
+                    {{ m.platform }}
+                  </span>
+                  <span
+                    v-if="isPerRequest(m)"
+                    class="inline-flex items-center rounded-md border border-pink-200 bg-pink-50 px-2 py-0.5 text-[11px] font-medium text-pink-700 dark:border-pink-900/50 dark:bg-pink-900/20 dark:text-pink-300"
+                  >
+                    {{ t('modelPlaza.imagePerRequestTag') }}
+                  </span>
+                </div>
               </td>
 
-              <!-- 按次/图片计费：合并后续列，直接展示 1K/2K/4K 价格 -->
-              <td
-                v-if="isPerRequest(m)"
-                colspan="5"
-                class="px-4 py-3 text-gray-700 dark:text-gray-300"
-              >
-                {{ perRequestText(m) }}
+              <!-- 按次/图片计费：合并后续列，1K/2K/4K 彩色标签清晰区分各分辨率单价 -->
+              <td v-if="isPerRequest(m)" colspan="5" class="px-4 py-3">
+                <div v-if="perRequestTiers(m).length > 0" class="flex flex-wrap items-center gap-2">
+                  <span
+                    v-for="tier in perRequestTiers(m)"
+                    :key="tier.label"
+                    :class="[
+                      'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1',
+                      tierBadgeClass(tier.label),
+                    ]"
+                  >
+                    <span class="text-[10px] font-bold uppercase opacity-70">{{ tier.label }}</span>
+                    <span class="text-sm font-semibold tabular-nums">{{ tier.price }}</span>
+                  </span>
+                </div>
+                <span v-else class="text-gray-400">{{ t('modelPlaza.noPricing') }}</span>
               </td>
 
               <!-- token 计费：逐列展示「原价划线 + 折算后金额」（每百万 token） -->
@@ -267,29 +278,46 @@ function formatRate(rate: number): string {
 }
 
 /**
- * 生图按次模型一行文字（价格已按图片倍率折算）：统一始终展示 1K/2K/4K 三档，
- * 无论各档价格是否相同、来源是渠道定价还是分组分辨率定价。
- *  - image_tiers 有任一档价格 → "1K: x   2K: y   4K: z"（缺失的档位显示 "-"）；
- *  - 仅有 flat 按次价（理论上 resolveImageTier 已回落填满三档，这里兜底）→ 三档同价；
- *  - 都没有 → 未配置定价。
+ * 生图按次模型的 1K/2K/4K 档位（价格已按图片倍率折算），用于渲染彩色标签：
+ *  - image_tiers 有任一档价格 → 三档（缺失档位显示 "-"）；
+ *  - 仅有 flat 按次价（resolveImageTier 通常已回落填满三档，这里兜底）→ 三档同价；
+ *  - 都没有 → 空数组（模板显示"未配置定价"）。
  */
-function perRequestText(m: ModelPlazaModel): string {
+function perRequestTiers(m: ModelPlazaModel): { label: string; price: string }[] {
   const fold = (v: number | null): string => formatScaled(v == null ? null : v * imageMultiplier.value, 1)
   const tiers = m.image_tiers
   const hasTier =
     tiers != null && (tiers.price_1k != null || tiers.price_2k != null || tiers.price_4k != null)
   if (hasTier) {
     return [
-      `1K: ${fold(tiers!.price_1k)}`,
-      `2K: ${fold(tiers!.price_2k)}`,
-      `4K: ${fold(tiers!.price_4k)}`,
-    ].join('   ')
+      { label: '1K', price: fold(tiers!.price_1k) },
+      { label: '2K', price: fold(tiers!.price_2k) },
+      { label: '4K', price: fold(tiers!.price_4k) },
+    ]
   }
   if (m.per_request_price != null) {
     const v = fold(m.per_request_price)
-    return [`1K: ${v}`, `2K: ${v}`, `4K: ${v}`].join('   ')
+    return [
+      { label: '1K', price: v },
+      { label: '2K', price: v },
+      { label: '4K', price: v },
+    ]
   }
-  return t('modelPlaza.noPricing')
+  return []
+}
+
+/** 1K/2K/4K 各用一种颜色，便于一眼区分不同分辨率单价。 */
+function tierBadgeClass(label: string): string {
+  switch (label) {
+    case '1K':
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300'
+    case '2K':
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-900/20 dark:text-violet-300'
+    case '4K':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300'
+    default:
+      return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300'
+  }
 }
 
 async function load(groupId?: number) {
