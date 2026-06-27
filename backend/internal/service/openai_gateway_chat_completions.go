@@ -39,8 +39,6 @@ var cursorResponsesUnsupportedFields = []string{
 	"stream_options",
 }
 
-const shortChatProbeInstructions = "You are a helpful coding assistant."
-
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
 // the response back to Chat Completions format.
@@ -63,6 +61,23 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	restrictionResult := s.detectCodexClientRestriction(c, account, body)
+	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, body)
+	if restrictionResult.Enabled && !restrictionResult.Matched {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"type":    "forbidden_error",
+				"message": "This account only allows Codex official clients",
+			},
+		})
+		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
+	}
+
+	if account.Platform == PlatformGrok {
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// 入口分流：APIKey 账号 + 强制或已探测确认上游不支持 Responses，走 CC 直转。
 	// 自动模式下标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
@@ -174,11 +189,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
-		transformOpts := codexOAuthTransformOptions{}
-		if !isResponsesShape && shouldUseShortInstructionsForChatProbe(&chatReq, upstreamModel) {
-			transformOpts.DefaultInstructions = shortChatProbeInstructions
+		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+			SkipDefaultInstructions: !isResponsesShape,
+		})
+		if !isResponsesShape {
+			ensureCodexOAuthInstructionsField(reqBody)
 		}
-		codexResult := applyCodexOAuthTransformWithOptions(reqBody, transformOpts)
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 		}
@@ -247,18 +263,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			Kind:               "request_error",
-			Message:            safeErr,
-		})
-		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -914,96 +919,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			c.Writer.Flush()
 		}
 	}
-}
-
-func shouldUseShortInstructionsForChatProbe(req *apicompat.ChatCompletionsRequest, model string) bool {
-	if req == nil {
-		return false
-	}
-	if strings.TrimSpace(req.Instructions) != "" {
-		return false
-	}
-	if !isTextChatModelForShortProbe(model) {
-		return false
-	}
-	if len(req.Messages) != 1 {
-		return false
-	}
-	if len(req.Tools) > 0 || len(req.Functions) > 0 {
-		return false
-	}
-	if rawJSONFieldPresent(req.ToolChoice) || rawJSONFieldPresent(req.FunctionCall) {
-		return false
-	}
-	msg := req.Messages[0]
-	if strings.ToLower(strings.TrimSpace(msg.Role)) != "user" {
-		return false
-	}
-	text, ok := singleUserProbeText(msg.Content)
-	if !ok {
-		return false
-	}
-	switch normalizeShortChatProbeText(text) {
-	case "你是什么模型", "who are you", "what model are you", "hi", "hello":
-		return true
-	default:
-		return false
-	}
-}
-
-func isTextChatModelForShortProbe(model string) bool {
-	m := strings.ToLower(strings.TrimSpace(model))
-	if m == "" {
-		return false
-	}
-	nonTextMarkers := []string{
-		"gpt-image",
-		"image",
-		"sora",
-		"dall-e",
-		"tts",
-		"whisper",
-		"audio",
-		"embedding",
-	}
-	for _, marker := range nonTextMarkers {
-		if strings.Contains(m, marker) {
-			return false
-		}
-	}
-	return true
-}
-
-func rawJSONFieldPresent(raw json.RawMessage) bool {
-	trimmed := bytes.TrimSpace(raw)
-	return len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null"))
-}
-
-func singleUserProbeText(raw json.RawMessage) (string, bool) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return "", false
-	}
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		return text, true
-	}
-	var parts []map[string]any
-	if err := json.Unmarshal(raw, &parts); err != nil || len(parts) != 1 {
-		return "", false
-	}
-	part := parts[0]
-	typ, _ := part["type"].(string)
-	if typ != "" && typ != "text" && typ != "input_text" {
-		return "", false
-	}
-	text, ok := part["text"].(string)
-	return text, ok
-}
-
-func normalizeShortChatProbeText(text string) string {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	normalized = strings.TrimRight(normalized, " \t\r\n?？.。!！")
-	return strings.Join(strings.Fields(normalized), " ")
 }
 
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.

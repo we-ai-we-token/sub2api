@@ -181,18 +181,18 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
 }
 
-func TestForwardAsChatCompletions_OAuthShortProbeUsesShortInstructions(t *testing.T) {
+func TestForwardAsChatCompletions_OAuthDoesNotInjectDefaultInstructions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"你是什么模型"}],"stream":false,"reasoning_effort":"low"}`)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusBadRequest,
-		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_short_probe"}},
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_chat_no_default_instructions"}},
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop before response parsing"}}`)),
 	}}
 
@@ -201,7 +201,7 @@ func TestForwardAsChatCompletions_OAuthShortProbeUsesShortInstructions(t *testin
 		httpUpstream: upstream,
 	}
 	account := &Account{
-		ID:          1,
+		ID:          3,
 		Name:        "openai-oauth",
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
@@ -212,125 +212,14 @@ func TestForwardAsChatCompletions_OAuthShortProbeUsesShortInstructions(t *testin
 		},
 	}
 
-	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.Equal(t, shortChatProbeInstructions, gjson.GetBytes(upstream.lastBody, "instructions").String())
-	require.Equal(t, "gpt-5.5", gjson.GetBytes(upstream.lastBody, "model").String())
-}
-
-func TestForwardAsChatCompletions_OAuthNormalSingleUserKeepsCodexInstructions(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello, please help me inspect this project"}],"stream":false}`)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusBadRequest,
-		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_normal_prompt"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop before response parsing"}}`)),
-	}}
-
-	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{},
-		httpUpstream: upstream,
-	}
-	account := &Account{
-		ID:          1,
-		Name:        "openai-oauth",
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeOAuth,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"access_token":       "oauth-token",
-			"chatgpt_account_id": "chatgpt-acc",
-		},
-	}
-
-	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
-	require.Error(t, err)
-	require.Nil(t, result)
-	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
-	require.NotEqual(t, shortChatProbeInstructions, instructions)
-	require.Contains(t, instructions, "running in the Codex CLI")
-}
-
-func TestShouldUseShortInstructionsForChatProbe(t *testing.T) {
-	baseReq := func(content string) *apicompat.ChatCompletionsRequest {
-		return &apicompat.ChatCompletionsRequest{
-			Model: "gpt-5.5",
-			Messages: []apicompat.ChatMessage{
-				{Role: "user", Content: []byte(content)},
-			},
-		}
-	}
-
-	cases := []struct {
-		name  string
-		req   *apicompat.ChatCompletionsRequest
-		model string
-		want  bool
-	}{
-		{
-			name:  "chinese model probe",
-			req:   baseReq(`"你是什么模型"`),
-			model: "gpt-5.5",
-			want:  true,
-		},
-		{
-			name:  "english model probe punctuation and spaces",
-			req:   baseReq(`"  WHAT   MODEL are  YOU?? "`),
-			model: "gpt-5.5",
-			want:  true,
-		},
-		{
-			name:  "hello content part",
-			req:   baseReq(`[{"type":"text","text":"Hello!"}]`),
-			model: "gpt-5.5",
-			want:  true,
-		},
-		{
-			name:  "normal sentence not exact probe",
-			req:   baseReq(`"hello, please help me inspect this project"`),
-			model: "gpt-5.5",
-			want:  false,
-		},
-		{
-			name: "existing instructions",
-			req: func() *apicompat.ChatCompletionsRequest {
-				req := baseReq(`"hello"`)
-				req.Instructions = "existing instructions"
-				return req
-			}(),
-			model: "gpt-5.5",
-			want:  false,
-		},
-		{
-			name: "tool request",
-			req: func() *apicompat.ChatCompletionsRequest {
-				req := baseReq(`"hello"`)
-				req.Tools = []apicompat.ChatTool{{Type: "function"}}
-				return req
-			}(),
-			model: "gpt-5.5",
-			want:  false,
-		},
-		{
-			name:  "non text model",
-			req:   baseReq(`"hello"`),
-			model: "gpt-image-2",
-			want:  false,
-		},
-	}
-
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, shouldUseShortInstructionsForChatProbe(tt.req, tt.model))
-		})
-	}
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "instructions").Exists())
+	require.Equal(t, "", gjson.GetBytes(upstream.lastBody, "instructions").String())
+	require.NotContains(t, string(upstream.lastBody), "Communicate with the user by streaming thinking")
 }
 
 func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing.T) {
