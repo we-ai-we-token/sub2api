@@ -389,6 +389,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -1104,6 +1105,35 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  modelPlaza: {
+    title: 'Model Plaza',
+    description: 'Browse models supported by each group and their prices (already adjusted by the group rate)',
+    searchPlaceholder: 'Search models or platforms...',
+    empty: 'No supported models in this group',
+    noPricing: 'Pricing not configured',
+    exclusive: 'Exclusive',
+    perRequest: 'Per request',
+    exchangeHint: 'On this platform, CNY 1 = USD 1. For example: a 0.28x rate = CNY 0.28 per USD.',
+    priceUnitNote: 'Token prices are per 1M tokens (USD), shown as the original price (struck through) and the amount after the group rate. Image models are billed per request, showing the adjusted 1K / 2K / 4K unit prices.',
+    userRateHint: 'Your exclusive rate for this group, overriding the group default',
+    userRateBadge: 'Exclusive rate (default {rate}x)',
+    cards: {
+      group: 'Current Group',
+      rate: 'Group Rate',
+      modelCount: 'Supported Models',
+      modelCountUnit: 'models'
+    },
+    columns: {
+      model: 'Model',
+      platform: 'Platform',
+      input: 'Input',
+      output: 'Output',
+      cacheWrite: 'Cache Write',
+      cacheRead: 'Cache Read',
+      imageOutput: 'Image Output'
     }
   },
 

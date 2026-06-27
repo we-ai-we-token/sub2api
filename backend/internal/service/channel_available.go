@@ -32,6 +32,10 @@ type AvailableChannel struct {
 	RestrictModels     bool
 	Groups             []AvailableGroupRef
 	SupportedModels    []SupportedModel
+	// ModelPricing 渠道原始模型定价（含通配符模式，如 "gemini-3.1-flash-image_*"）。
+	// SupportedModels 已剔除通配符，无法据此展开具体模型；模型广场用它配合账号实际
+	// 模型把通配符按次定价展开成具体模型行。可用渠道页面不使用该字段。
+	ModelPricing []ChannelModelPricing
 }
 
 // ListAvailable 返回所有渠道的可用视图：每个渠道附带关联分组信息与支持模型列表。
@@ -93,6 +97,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			RestrictModels:     ch.RestrictModels,
 			Groups:             groups,
 			SupportedModels:    supported,
+			ModelPricing:       ch.ModelPricing,
 		})
 	}
 
@@ -100,6 +105,22 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+// DisplayPricingForModel 返回某模型用于「展示」的定价：从全局 LiteLLM 内置数据
+// 合成（token 或 image 模式由 LiteLLM mode 决定），未知模型或无 pricingService 时返回 nil。
+//
+// 仅用于模型广场把「账号可调用但渠道未单独定价」的模型（如 gpt-image-2，计费走分组
+// 分辨率价）补齐展示定价，不影响真实计费链路。
+func (s *ChannelService) DisplayPricingForModel(model string) *ChannelModelPricing {
+	if s.pricingService == nil {
+		return nil
+	}
+	lp := s.pricingService.GetModelPricing(model)
+	if lp == nil {
+		return nil
+	}
+	return synthesizePricingFromLiteLLM(lp, nil)
 }
 
 // fillGlobalPricingFallback 对未命中渠道定价的支持模型，从全局 LiteLLM 数据合成一份

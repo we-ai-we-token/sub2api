@@ -78,6 +78,12 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 模型广场（用户只读：按分组聚合支持模型与定价）
+		modelPlaza := authenticated.Group("/model-plaza")
+		{
+			modelPlaza.GET("/models", h.ModelPlaza.Models)
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{

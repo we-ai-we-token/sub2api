@@ -389,6 +389,7 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    modelPlaza: '模型广场',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
@@ -1108,6 +1109,35 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
+    }
+  },
+
+  modelPlaza: {
+    title: '模型广场',
+    description: '查看各分组支持的模型与价格（价格已按分组倍率折算）',
+    searchPlaceholder: '搜索模型或平台...',
+    empty: '该分组暂无支持的模型',
+    noPricing: '未配置定价',
+    exclusive: '专属',
+    perRequest: '每次',
+    exchangeHint: '本平台 1 人民币 = 1 美元。例如：0.28 倍率 = 0.28 人民币/美元。',
+    priceUnitNote: '价格单位：每百万 token（USD）消耗。token 价展示原价（划线）与按分组倍率折算后的金额；生图模型按次计价，直接展示折算后的 1K / 2K / 4K 单价。',
+    userRateHint: '你在该分组的专属倍率，已覆盖分组默认倍率',
+    userRateBadge: '专属倍率（默认 {rate}x）',
+    cards: {
+      group: '当前分组',
+      rate: '分组倍率',
+      modelCount: '支持模型',
+      modelCountUnit: '个模型'
+    },
+    columns: {
+      model: '模型',
+      platform: '平台',
+      input: '输入',
+      output: '输出',
+      cacheWrite: '缓存写',
+      cacheRead: '缓存读',
+      imageOutput: '图片输出'
     }
   },
 
