@@ -2304,7 +2304,7 @@ function parseBlockedKeywords(value: string): string[] {
   for (const line of value.split(/\r?\n/)) {
     const kw = line.trim()
     if (!kw) continue
-    const key = kw.toLowerCase()
+    const key = kw.toLowerCase().startsWith('re:') ? kw : kw.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
     out.push(kw)

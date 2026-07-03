@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -881,9 +882,10 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 		"text_runes", len([]rune(content.Text)),
 		"image_count", len(content.Images))
 	hashText := content.Hash()
-	if cfg.Mode == ContentModerationModePreBlock {
-		if cfg.KeywordBlockingMode != ContentModerationKeywordModeAPIOnly && len(cfg.BlockedKeywords) > 0 {
-			if keyword, hit := matchBlockedKeyword(content.Text, cfg.BlockedKeywords); hit {
+	if cfg.KeywordBlockingMode != ContentModerationKeywordModeAPIOnly && len(cfg.BlockedKeywords) > 0 {
+		if keyword, hit := matchBlockedKeyword(content.Text, cfg.BlockedKeywords); hit {
+			scores := map[string]float64{contentModerationKeywordCategory: 1.0}
+			if cfg.Mode == ContentModerationModePreBlock {
 				s.recordPreBlockSyncMetric(0, ContentModerationActionKeywordBlock)
 				slog.Info("content_moderation.keyword_block",
 					"user_id", input.UserID,
@@ -893,7 +895,6 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 					"protocol", input.Protocol,
 					"keyword_blocking_mode", cfg.KeywordBlockingMode,
 					"keyword", keyword)
-				scores := map[string]float64{contentModerationKeywordCategory: 1.0}
 				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
 				s.enqueueRecord(input, cfg, log, hashText, false, true)
 				return &ContentModerationDecision{
@@ -908,17 +909,38 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 					Action:          ContentModerationActionKeywordBlock,
 				}, nil
 			}
-		}
-		if cfg.KeywordBlockingMode == ContentModerationKeywordModeKeywordOnly {
-			s.recordPreBlockSyncMetric(0, ContentModerationActionAllow)
-			slog.Info("content_moderation.skip_api_keyword_only",
+			slog.Info("content_moderation.keyword_observe",
 				"user_id", input.UserID,
 				"api_key_id", input.APIKeyID,
 				"group_id", contentModerationLogGroupID(input.GroupID),
 				"endpoint", input.Endpoint,
-				"protocol", input.Protocol)
-			return allow, nil
+				"protocol", input.Protocol,
+				"keyword_blocking_mode", cfg.KeywordBlockingMode,
+				"keyword", keyword)
+			log := s.buildLog(input, cfg, ContentModerationActionAllow, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
+			s.enqueueRecord(input, cfg, log, hashText, false, true)
+			return &ContentModerationDecision{
+				Allowed:         true,
+				Flagged:         true,
+				HighestCategory: contentModerationKeywordCategory,
+				HighestScore:    1.0,
+				CategoryScores:  scores,
+				Action:          ContentModerationActionAllow,
+			}, nil
 		}
+	}
+	if cfg.KeywordBlockingMode == ContentModerationKeywordModeKeywordOnly {
+		if cfg.Mode == ContentModerationModePreBlock {
+			s.recordPreBlockSyncMetric(0, ContentModerationActionAllow)
+		}
+		slog.Info("content_moderation.skip_api_keyword_only",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"group_id", contentModerationLogGroupID(input.GroupID),
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol,
+			"mode", cfg.Mode)
+		return allow, nil
 	}
 	if cfg.PreHashCheckEnabled && s.hashCache != nil {
 		matched, err := s.hashCache.HasFlaggedInputHash(ctx, hashText)
@@ -2493,7 +2515,7 @@ func normalizeBlockedKeywords(in []string) []string {
 			continue
 		}
 		kw = trimRunes(kw, maxContentModerationBlockedKeywordRunes)
-		key := strings.ToLower(kw)
+		key := blockedKeywordRuleDedupeKey(kw)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -2504,6 +2526,13 @@ func normalizeBlockedKeywords(in []string) []string {
 		}
 	}
 	return out
+}
+
+func blockedKeywordRuleDedupeKey(rule string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(rule)), "re:") {
+		return strings.TrimSpace(rule)
+	}
+	return strings.ToLower(rule)
 }
 
 func normalizeKeywordBlockingMode(mode string) string {
@@ -2591,15 +2620,46 @@ func matchBlockedKeyword(text string, keywords []string) (string, bool) {
 		return "", false
 	}
 	lower := strings.ToLower(text)
-	for _, kw := range keywords {
-		if kw == "" {
+	for _, rule := range keywords {
+		rule = strings.TrimSpace(rule)
+		if rule == "" {
 			continue
 		}
-		if strings.Contains(lower, strings.ToLower(kw)) {
-			return kw, true
+		if matchBlockedKeywordRule(text, lower, rule) {
+			return rule, true
 		}
 	}
 	return "", false
+}
+
+func matchBlockedKeywordRule(text, lowerText, rule string) bool {
+	parts := strings.Split(rule, "&&")
+	for _, rawPart := range parts {
+		part := strings.TrimSpace(rawPart)
+		if part == "" {
+			return false
+		}
+		if !matchBlockedKeywordPart(text, lowerText, part) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchBlockedKeywordPart(text, lowerText, part string) bool {
+	if strings.HasPrefix(strings.ToLower(part), "re:") {
+		pattern := strings.TrimSpace(part[3:])
+		if pattern == "" {
+			return false
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			slog.Warn("content_moderation.keyword_regex_invalid", "pattern", pattern, "error", err)
+			return false
+		}
+		return re.MatchString(text)
+	}
+	return strings.Contains(lowerText, strings.ToLower(part))
 }
 
 func normalizeModerationAPIKeys(keys []string) []string {

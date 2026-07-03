@@ -438,6 +438,26 @@ func TestMatchBlockedKeyword_CaseInsensitiveSubstring(t *testing.T) {
 	require.False(t, hit)
 }
 
+func TestMatchBlockedKeyword_SupportsOrAndAndRegexRules(t *testing.T) {
+	keyword, hit := matchBlockedKeyword("alpha and BETA are both present", []string{"missing", "alpha && beta"})
+	require.True(t, hit)
+	require.Equal(t, "alpha && beta", keyword)
+
+	_, hit = matchBlockedKeyword("alpha only", []string{"alpha && beta"})
+	require.False(t, hit)
+
+	keyword, hit = matchBlockedKeyword("ticket id is AB-12345", []string{"re:[A-Z]{2}-\\d{5}"})
+	require.True(t, hit)
+	require.Equal(t, "re:[A-Z]{2}-\\d{5}", keyword)
+
+	keyword, hit = matchBlockedKeyword("order ab-12345 is lower case", []string{"re:[A-Z]{2}-\\d{5}", "order && lower"})
+	require.True(t, hit)
+	require.Equal(t, "order && lower", keyword)
+
+	_, hit = matchBlockedKeyword("anything", []string{"re:["})
+	require.False(t, hit)
+}
+
 func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T) {
 	upstreamCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -487,7 +507,7 @@ func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T
 	require.Equal(t, contentModerationKeywordCategory, logs[0].HighestCategory)
 }
 
-func TestContentModerationCheck_KeywordsIgnoredInObserveMode(t *testing.T) {
+func TestContentModerationCheck_KeywordHitInObserveModeRecordsOnly(t *testing.T) {
 	upstreamHits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamHits++
@@ -528,7 +548,14 @@ func TestContentModerationCheck_KeywordsIgnoredInObserveMode(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, decision.Allowed, "observe mode must let the request through even on keyword hit")
+	require.True(t, decision.Flagged)
 	require.Equal(t, ContentModerationActionAllow, decision.Action)
+	require.Equal(t, contentModerationKeywordCategory, decision.HighestCategory)
+	require.Zero(t, upstreamHits, "keyword rule hit should run before the upstream moderation API")
+	logs := requireContentModerationLogCount(t, repo, 1)
+	require.True(t, logs[0].Flagged)
+	require.Equal(t, ContentModerationActionAllow, logs[0].Action)
+	require.Equal(t, contentModerationKeywordCategory, logs[0].HighestCategory)
 }
 
 func TestContentModerationCheck_KeywordOnlyStrategySkipsAPIOnMiss(t *testing.T) {
