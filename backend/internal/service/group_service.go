@@ -110,6 +110,8 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		AllowImageGeneration: req.AllowImageGeneration,
 		ImageRateIndependent: req.ImageRateIndependent,
 		ImageRateMultiplier:  imageRateMultiplier,
+		// OAuth 生图链路开关默认 true（与 schema 默认一致，避免显式写入 false 覆盖默认值）
+		ImageUseResponsesAPI: true,
 	}
 
 	if err := s.groupRepo.Create(ctx, group); err != nil {

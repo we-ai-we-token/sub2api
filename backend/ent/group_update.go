@@ -693,6 +693,20 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetImageUseResponsesAPI sets the "image_use_responses_api" field.
+func (_u *GroupUpdate) SetImageUseResponsesAPI(v bool) *GroupUpdate {
+	_u.mutation.SetImageUseResponsesAPI(v)
+	return _u
+}
+
+// SetNillableImageUseResponsesAPI sets the "image_use_responses_api" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageUseResponsesAPI(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageUseResponsesAPI(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1216,6 +1230,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ImageUseResponsesAPI(); ok {
+		_spec.SetField(group.FieldImageUseResponsesAPI, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2194,6 +2211,20 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetImageUseResponsesAPI sets the "image_use_responses_api" field.
+func (_u *GroupUpdateOne) SetImageUseResponsesAPI(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageUseResponsesAPI(v)
+	return _u
+}
+
+// SetNillableImageUseResponsesAPI sets the "image_use_responses_api" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageUseResponsesAPI(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageUseResponsesAPI(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -2747,6 +2778,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ImageUseResponsesAPI(); ok {
+		_spec.SetField(group.FieldImageUseResponsesAPI, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

@@ -813,6 +813,65 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesCodexImagesEndpoint(t *testi
 	require.Equal(t, "draw a cat 1", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_OAuthGroupResponsesFlagUsesResponsesEndpoint(t *testing.T) {
+	// 分组开关 ImageUseResponsesAPI=true 时，OAuth 生图应走上游 Responses 链路：
+	// 请求打到 chatgptCodexURL（/backend-api/codex/responses），请求体为 image_generation
+	// 工具包裹（model=gpt-5.4-mini），而非专用 codex images 端点的扁平 body。
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":1}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42, Group: &Group{ImageUseResponsesAPI: true}})
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_resp_1"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"output_format\":\"png\",\"size\":\"1024x1024\"}]}}\n\n",
+			)),
+		},
+	}
+	svc.httpUpstream = upstream
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":       "token-123",
+			"chatgpt_account_id": "acct-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 路由到 Responses 端点
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
+	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
+
+	// 请求体为 Responses image_generation 工具包裹（非扁平 codex images body）
+	require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "image_generation", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
+	require.Equal(t, "generate", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthServerErrorCodeIsRetryable(t *testing.T) {
 	// Verifies that a 400 response with server_error code from the codex images
 	// endpoint is classified as a retryable OpenAIImagesUpstreamError.

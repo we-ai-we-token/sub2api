@@ -15370,6 +15370,7 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	models_list_config                      *domain.GroupModelsListConfig
+	image_use_responses_api                 *bool
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	clearedFields                           map[string]struct{}
@@ -17288,6 +17289,42 @@ func (m *GroupMutation) ResetModelsListConfig() {
 	m.models_list_config = nil
 }
 
+// SetImageUseResponsesAPI sets the "image_use_responses_api" field.
+func (m *GroupMutation) SetImageUseResponsesAPI(b bool) {
+	m.image_use_responses_api = &b
+}
+
+// ImageUseResponsesAPI returns the value of the "image_use_responses_api" field in the mutation.
+func (m *GroupMutation) ImageUseResponsesAPI() (r bool, exists bool) {
+	v := m.image_use_responses_api
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageUseResponsesAPI returns the old "image_use_responses_api" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageUseResponsesAPI(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageUseResponsesAPI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageUseResponsesAPI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageUseResponsesAPI: %w", err)
+	}
+	return oldValue.ImageUseResponsesAPI, nil
+}
+
+// ResetImageUseResponsesAPI resets all changes to the "image_use_responses_api" field.
+func (m *GroupMutation) ResetImageUseResponsesAPI() {
+	m.image_use_responses_api = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -17702,7 +17739,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 40)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17817,6 +17854,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.models_list_config != nil {
 		fields = append(fields, group.FieldModelsListConfig)
 	}
+	if m.image_use_responses_api != nil {
+		fields = append(fields, group.FieldImageUseResponsesAPI)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -17904,6 +17944,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldModelsListConfig:
 		return m.ModelsListConfig()
+	case group.FieldImageUseResponsesAPI:
+		return m.ImageUseResponsesAPI()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	}
@@ -17991,6 +18033,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldModelsListConfig:
 		return m.OldModelsListConfig(ctx)
+	case group.FieldImageUseResponsesAPI:
+		return m.OldImageUseResponsesAPI(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	}
@@ -18267,6 +18311,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelsListConfig(v)
+		return nil
+	case group.FieldImageUseResponsesAPI:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageUseResponsesAPI(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -18677,6 +18728,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelsListConfig:
 		m.ResetModelsListConfig()
+		return nil
+	case group.FieldImageUseResponsesAPI:
+		m.ResetImageUseResponsesAPI()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

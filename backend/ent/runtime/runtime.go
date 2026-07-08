@@ -900,8 +900,12 @@ func init() {
 	groupDescModelsListConfig := groupFields[34].Descriptor()
 	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
 	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
+	// groupDescImageUseResponsesAPI is the schema descriptor for image_use_responses_api field.
+	groupDescImageUseResponsesAPI := groupFields[35].Descriptor()
+	// group.DefaultImageUseResponsesAPI holds the default value on creation for the image_use_responses_api field.
+	group.DefaultImageUseResponsesAPI = groupDescImageUseResponsesAPI.Default.(bool)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[35].Descriptor()
+	groupDescRpmLimit := groupFields[36].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

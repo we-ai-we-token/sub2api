@@ -92,6 +92,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
 	FieldModelsListConfig = "models_list_config"
+	// FieldImageUseResponsesAPI holds the string denoting the image_use_responses_api field in the database.
+	FieldImageUseResponsesAPI = "image_use_responses_api"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
@@ -207,6 +209,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
+	FieldImageUseResponsesAPI,
 	FieldRpmLimit,
 }
 
@@ -305,6 +308,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
 	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultImageUseResponsesAPI holds the default value on creation for the "image_use_responses_api" field.
+	DefaultImageUseResponsesAPI bool
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 )
@@ -485,6 +490,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByImageUseResponsesAPI orders the results by the image_use_responses_api field.
+func ByImageUseResponsesAPI(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageUseResponsesAPI, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.

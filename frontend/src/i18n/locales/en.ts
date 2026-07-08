@@ -2356,6 +2356,11 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      openaiImage: {
+        title: 'OpenAI Image Generation Path',
+        useResponsesApi: 'Use Responses image path',
+        useResponsesApiHint: 'When enabled (default), OAuth image generation uses the upstream Responses (image_generation tool) path (/backend-api/codex/responses); when disabled, it uses the dedicated codex images endpoints (/backend-api/codex/images/*).',
+      },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',

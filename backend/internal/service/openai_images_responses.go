@@ -1547,7 +1547,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	startTime := time.Now()
+	// 流式 + n>1 属输入非法，两条链路一致拒绝（置于分组分流之前统一收口）。
 	if parsed.Stream && parsed.N > 1 {
 		upstreamErr := &OpenAIImagesUpstreamError{
 			StatusCode: http.StatusBadRequest,
@@ -1559,6 +1559,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
 		return nil, upstreamErr
 	}
+	// 分组开关：开（默认）走上游 Responses 链路，关走二开专用 codex images 端点链路。
+	if groupUsesResponsesImageAPI(c) {
+		return s.forwardOpenAIImagesOAuthResponses(ctx, c, account, parsed, channelMappedModel)
+	}
+	startTime := time.Now()
 	if parsed.Stream {
 		return s.forwardOpenAIImagesOAuthStreaming(ctx, c, account, parsed, channelMappedModel, startTime)
 	}

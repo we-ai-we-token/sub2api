@@ -73,6 +73,10 @@ type Group struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
 
+	// ImageUseResponsesAPI 控制 OAuth 生图链路（仅 openai 平台使用）：
+	// true（默认）走上游 Responses(image_generation 工具) 链路；false 走专用 codex images 端点链路。
+	ImageUseResponsesAPI bool
+
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int

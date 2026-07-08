@@ -2440,6 +2440,11 @@ export default {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      openaiImage: {
+        title: 'OpenAI 生图链路',
+        useResponsesApi: '使用 Responses 生图链路',
+        useResponsesApiHint: '开启（默认）时，OAuth 账号生图走上游 Responses(image_generation 工具) 链路（/backend-api/codex/responses）；关闭时走专用 codex images 端点（/backend-api/codex/images/*）。',
+      },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',

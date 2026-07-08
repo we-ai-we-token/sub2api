@@ -225,6 +225,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// ImageUseResponsesAPI applies equality check predicate on the "image_use_responses_api" field. It's identical to ImageUseResponsesAPIEQ.
+func ImageUseResponsesAPI(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageUseResponsesAPI, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -1598,6 +1603,16 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// ImageUseResponsesAPIEQ applies the EQ predicate on the "image_use_responses_api" field.
+func ImageUseResponsesAPIEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageUseResponsesAPI, v))
+}
+
+// ImageUseResponsesAPINEQ applies the NEQ predicate on the "image_use_responses_api" field.
+func ImageUseResponsesAPINEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageUseResponsesAPI, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

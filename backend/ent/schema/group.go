@@ -176,6 +176,11 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
 
+		// OAuth 生图链路开关 (added by migration 159；仅 openai 平台使用)
+		field.Bool("image_use_responses_api").
+			Default(true).
+			Comment("OAuth 生图链路：true(默认)走上游 Responses(image_generation 工具)链路，false 走专用 codex images 端点链路"),
+
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").
 			Default(0).

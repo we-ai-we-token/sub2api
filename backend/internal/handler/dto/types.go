@@ -148,6 +148,9 @@ type AdminGroup struct {
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            domain.GroupModelsListConfig             `json:"models_list_config"`
 
+	// OAuth 生图链路开关（仅 openai 平台使用）：true(默认)走上游 Responses 链路，false 走专用 codex images 端点
+	ImageUseResponsesAPI bool `json:"image_use_responses_api"`
+
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes    []string       `json:"supported_model_scopes"`
 	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`

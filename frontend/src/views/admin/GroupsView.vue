@@ -1141,6 +1141,48 @@
           </div>
         </div>
 
+        <!-- OpenAI 生图链路配置（仅 openai 平台） -->
+        <div
+          v-if="createForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiImage.title") }}
+          </h4>
+
+          <!-- 使用 Responses 生图链路开关 -->
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{
+              t("admin.groups.openaiImage.useResponsesApi")
+            }}</label>
+            <button
+              type="button"
+              @click="
+                createForm.image_use_responses_api =
+                  !createForm.image_use_responses_api
+              "
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.image_use_responses_api
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.image_use_responses_api
+                    ? 'translate-x-6'
+                    : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiImage.useResponsesApiHint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2472,6 +2514,48 @@
           </div>
         </div>
 
+        <!-- OpenAI 生图链路配置（仅 openai 平台） -->
+        <div
+          v-if="editForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiImage.title") }}
+          </h4>
+
+          <!-- 使用 Responses 生图链路开关 -->
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{
+              t("admin.groups.openaiImage.useResponsesApi")
+            }}</label>
+            <button
+              type="button"
+              @click="
+                editForm.image_use_responses_api =
+                  !editForm.image_use_responses_api
+              "
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.image_use_responses_api
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.image_use_responses_api
+                    ? 'translate-x-6'
+                    : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiImage.useResponsesApiHint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -3556,6 +3640,8 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // OpenAI 生图链路开关（仅 openai 平台使用），默认 true（走上游 Responses 链路）
+  image_use_responses_api: true,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
@@ -3892,6 +3978,8 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // OpenAI 生图链路开关（仅 openai 平台使用），默认 true（走上游 Responses 链路）
+  image_use_responses_api: true,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
@@ -4151,6 +4239,7 @@ const closeCreateModal = () => {
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
+  createForm.image_use_responses_api = true;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
   createForm.image_price_1k = null;
@@ -4230,6 +4319,10 @@ const handleCreateGroup = async () => {
         createForm.platform,
         createForm.supported_model_scopes,
       ),
+      image_use_responses_api:
+        createForm.platform === "openai"
+          ? createForm.image_use_responses_api
+          : undefined,
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
@@ -4287,6 +4380,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
+  editForm.image_use_responses_api = group.image_use_responses_api ?? true;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.image_price_1k = group.image_price_1k;
@@ -4383,6 +4477,10 @@ const handleUpdateGroup = async () => {
         editForm.platform,
         editForm.supported_model_scopes,
       ),
+      image_use_responses_api:
+        editForm.platform === "openai"
+          ? editForm.image_use_responses_api
+          : undefined,
       messages_dispatch_model_config:
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
