@@ -172,6 +172,7 @@ type UsageLog struct {
 	ImageInputSize     *string
 	ImageOutputSize    *string
 	ImageSizeSource    *string
+	ImageQuality       *string
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
 

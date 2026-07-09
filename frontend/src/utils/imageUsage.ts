@@ -29,7 +29,7 @@ const knownImageBillingSizes = new Set(['1K', '2K', '4K', 'mixed'])
 
 type ImageUsageRow = Pick<
   UsageLog,
-  'image_size' | 'image_input_size' | 'image_output_size' | 'image_size_source' | 'image_size_breakdown'
+  'image_size' | 'image_input_size' | 'image_output_size' | 'image_size_source' | 'image_quality' | 'image_size_breakdown' | 'billing_tier'
 >
 
 const trimmed = (value: string | null | undefined): string => value?.trim() ?? ''
@@ -43,6 +43,29 @@ export const formatImageBillingSize = (row: ImageUsageRow | null | undefined, t:
     return size
   }
   return `${t('usage.imageSizeLegacyUnstandardized')}: ${size}`
+}
+
+export const formatImageQuality = (row: ImageUsageRow | null | undefined, t: Translate): string => {
+  const quality = trimmed(row?.image_quality).toLowerCase()
+  if (['low', 'medium', 'high'].includes(quality)) {
+    return quality
+  }
+  return t('usage.imageQualityNotRecorded')
+}
+
+export const formatImageBillingTier = (row: ImageUsageRow | null | undefined, t: Translate): string => {
+  const tier = trimmed(row?.billing_tier)
+  const normalizedQuality = tier.toLowerCase()
+  if (['low', 'medium', 'high'].includes(normalizedQuality)) {
+    return normalizedQuality
+  }
+  if (knownImageBillingSizes.has(tier)) {
+    return tier
+  }
+  if (tier) {
+    return tier
+  }
+  return formatImageBillingSize(row, t)
 }
 
 export const formatImageInputSize = (row: ImageUsageRow | null | undefined, t: Translate): string => {

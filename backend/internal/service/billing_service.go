@@ -1215,9 +1215,12 @@ func (s *BillingService) ForceUpdatePricing() error {
 
 // ImagePriceConfig 图片计费配置
 type ImagePriceConfig struct {
-	Price1K *float64 // 1K 尺寸价格（nil 表示使用默认值）
-	Price2K *float64 // 2K 尺寸价格（nil 表示使用默认值）
-	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
+	Price1K     *float64 // 1K 尺寸价格（nil 表示使用默认值）
+	Price2K     *float64 // 2K 尺寸价格（nil 表示使用默认值）
+	Price4K     *float64 // 4K 尺寸价格（nil 表示使用默认值）
+	PriceLow    *float64 // low 质量价格（nil 表示使用默认值）
+	PriceMedium *float64 // medium 质量价格（nil 表示使用默认值）
+	PriceHigh   *float64 // high 质量价格（nil 表示使用默认值）
 }
 
 // CalculateImageCost 计算图片生成费用
@@ -1230,7 +1233,7 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
-	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
+	imageSize = normalizeImagePriceTierOrDefault(imageSize)
 
 	// 获取单价
 	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
@@ -1268,11 +1271,30 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 			if groupConfig.Price4K != nil {
 				return *groupConfig.Price4K
 			}
+		case OpenAIImageQualityLow:
+			if groupConfig.PriceLow != nil {
+				return *groupConfig.PriceLow
+			}
+		case OpenAIImageQualityMedium:
+			if groupConfig.PriceMedium != nil {
+				return *groupConfig.PriceMedium
+			}
+		case OpenAIImageQualityHigh:
+			if groupConfig.PriceHigh != nil {
+				return *groupConfig.PriceHigh
+			}
 		}
 	}
 
 	// 回退到 LiteLLM 默认价格
 	return s.getDefaultImagePrice(model, imageSize)
+}
+
+func normalizeImagePriceTierOrDefault(tier string) string {
+	if quality := NormalizeOpenAIImageQualityOrEmpty(tier); quality != "" {
+		return quality
+	}
+	return NormalizeImageBillingTierOrDefault(tier)
 }
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格

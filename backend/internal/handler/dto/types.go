@@ -103,13 +103,17 @@ type Group struct {
 	ImageRateIndependent bool    `json:"image_rate_independent"`
 	ImageRateMultiplier  float64 `json:"image_rate_multiplier"`
 	// 高峰时段倍率配置
-	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
-	PeakStart          string   `json:"peak_start"`
-	PeakEnd            string   `json:"peak_end"`
-	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	ImagePrice1K       *float64 `json:"image_price_1k"`
-	ImagePrice2K       *float64 `json:"image_price_2k"`
-	ImagePrice4K       *float64 `json:"image_price_4k"`
+	PeakRateEnabled     bool     `json:"peak_rate_enabled"`
+	PeakStart           string   `json:"peak_start"`
+	PeakEnd             string   `json:"peak_end"`
+	PeakRateMultiplier  float64  `json:"peak_rate_multiplier"`
+	ImagePrice1K        *float64 `json:"image_price_1k"`
+	ImagePrice2K        *float64 `json:"image_price_2k"`
+	ImagePrice4K        *float64 `json:"image_price_4k"`
+	ImageQualityBilling bool     `json:"image_quality_billing"`
+	ImagePriceLow       *float64 `json:"image_price_low"`
+	ImagePriceMedium    *float64 `json:"image_price_medium"`
+	ImagePriceHigh      *float64 `json:"image_price_high"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
@@ -496,6 +500,7 @@ type UsageLog struct {
 	ImageOutputTokens  int            `json:"image_output_tokens"`
 	ImageOutputCost    float64        `json:"image_output_cost"`
 	ImageSizeSource    *string        `json:"image_size_source"`
+	ImageQuality       *string        `json:"image_quality"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
 

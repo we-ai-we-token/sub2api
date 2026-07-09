@@ -522,6 +522,10 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
+  image_quality_billing?: boolean
+  image_price_low?: number | null
+  image_price_medium?: number | null
+  image_price_high?: number | null
   // 高峰时段倍率配置
   peak_rate_enabled: boolean
   peak_start: string
@@ -648,6 +652,10 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_quality_billing?: boolean
+  image_price_low?: number | null
+  image_price_medium?: number | null
+  image_price_high?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -688,6 +696,10 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_quality_billing?: boolean
+  image_price_low?: number | null
+  image_price_medium?: number | null
+  image_price_high?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -1336,7 +1348,9 @@ export interface UsageLog {
   image_input_size: string | null
   image_output_size: string | null
   image_size_source: ImageSizeSource | null
+  image_quality?: string | null
   image_size_breakdown: ImageSizeBreakdown | null
+  billing_tier?: string | null
   image_output_tokens: number
   image_output_cost: number
 
@@ -1372,9 +1386,8 @@ export interface AdminUsageLog extends UsageLog {
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null
 
-  // 渠道 ID 和计费等级（仅管理员可见）
+  // 渠道 ID（仅管理员可见）
   channel_id?: number | null
-  billing_tier?: string | null
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary

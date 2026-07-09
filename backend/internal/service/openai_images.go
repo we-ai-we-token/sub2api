@@ -1132,6 +1132,9 @@ func mergeOpenAIUsage(dst *OpenAIUsage, body []byte) {
 		if parsed.ImageOutputTokens > 0 {
 			dst.ImageOutputTokens = parsed.ImageOutputTokens
 		}
+		if quality := strings.TrimSpace(parsed.Quality); quality != "" {
+			dst.Quality = quality
+		}
 	}
 }
 

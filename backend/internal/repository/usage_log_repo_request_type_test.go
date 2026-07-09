@@ -79,6 +79,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // image_input_size
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
+			sqlmock.AnyArg(), // image_quality
 			sqlmock.AnyArg(), // image_size_breakdown
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
@@ -162,6 +163,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // image_input_size
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
+			sqlmock.AnyArg(), // image_quality
 			sqlmock.AnyArg(), // image_size_breakdown
 			serviceTier,
 			sqlmock.AnyArg(),
@@ -243,6 +245,7 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 	inputSize := "1024x1024"
 	outputSize := "3840x2160"
 	source := "output"
+	quality := "high"
 	prepared := prepareUsageLogInsert(&service.UsageLog{
 		UserID:             1,
 		APIKeyID:           2,
@@ -255,6 +258,7 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		ImageInputSize:     &inputSize,
 		ImageOutputSize:    &outputSize,
 		ImageSizeSource:    &source,
+		ImageQuality:       &quality,
 		ImageSizeBreakdown: map[string]int{"1K": 1, "4K": 1},
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
@@ -263,7 +267,8 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[35])
 	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[36])
 	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[37])
-	breakdownJSON, ok := prepared.args[38].(string)
+	require.Equal(t, sql.NullString{String: quality, Valid: true}, prepared.args[38])
+	breakdownJSON, ok := prepared.args[39].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -793,6 +798,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "1024x1024"},
 			sql.NullString{Valid: true, String: "3840x2160"},
 			sql.NullString{Valid: true, String: "output"},
+			sql.NullString{Valid: true, String: "high"},
 			sql.NullString{Valid: true, String: `{"4K":2}`},
 			sql.NullString{},
 			sql.NullString{},
@@ -816,6 +822,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, "3840x2160", *log.ImageOutputSize)
 		require.NotNil(t, log.ImageSizeSource)
 		require.Equal(t, "output", *log.ImageSizeSource)
+		require.NotNil(t, log.ImageQuality)
+		require.Equal(t, "high", *log.ImageQuality)
 		require.Equal(t, map[string]int{"4K": 2}, log.ImageSizeBreakdown)
 	})
 
@@ -861,6 +869,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // image_input_size
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_size_breakdown
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
@@ -913,6 +922,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // image_input_size
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_size_breakdown
 			sql.NullString{Valid: true, String: "flex"},
 			sql.NullString{},
@@ -965,6 +975,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // image_input_size
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_size_breakdown
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},

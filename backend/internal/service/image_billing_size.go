@@ -11,6 +11,10 @@ const (
 	ImageBillingSize2K = "2K"
 	ImageBillingSize4K = "4K"
 
+	OpenAIImageQualityLow    = "low"
+	OpenAIImageQualityMedium = "medium"
+	OpenAIImageQualityHigh   = "high"
+
 	ImageSizeSourceOutput  = "output"
 	ImageSizeSourceInput   = "input"
 	ImageSizeSourceDefault = "default"
@@ -66,6 +70,26 @@ func NormalizeImageBillingTierOrDefault(size string) string {
 		return tier
 	}
 	return ImageBillingSize2K
+}
+
+func NormalizeOpenAIImageQualityOrEmpty(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case OpenAIImageQualityLow:
+		return OpenAIImageQualityLow
+	case OpenAIImageQualityMedium:
+		return OpenAIImageQualityMedium
+	case OpenAIImageQualityHigh:
+		return OpenAIImageQualityHigh
+	default:
+		return ""
+	}
+}
+
+func NormalizeOpenAIImageQualityOrLow(value string) string {
+	if quality := NormalizeOpenAIImageQualityOrEmpty(value); quality != "" {
+		return quality
+	}
+	return OpenAIImageQualityLow
 }
 
 func ResolveImageBillingSize(inputSize string, outputSizes []string) ImageBillingSizeResolution {

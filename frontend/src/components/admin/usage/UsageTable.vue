@@ -117,7 +117,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span class="font-medium text-gray-900 dark:text-white">{{ row.image_count }}{{ t('usage.imageUnit') }}</span>
-            <span class="text-gray-400">({{ formatImageBillingSize(row, t) }})</span>
+            <span class="text-gray-400">/ {{ formatImageBillingTier(row, t) }}</span>
           </div>
           <!-- Token 请求 -->
           <div v-else class="flex items-center gap-1.5">
@@ -344,6 +344,14 @@
                 <span class="font-medium text-white">{{ formatImageBillingSize(tooltipData, t) }}</span>
               </div>
               <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageQuality') }}</span>
+                <span class="font-medium text-white">{{ formatImageQuality(tooltipData, t) }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageBillingTier') }}</span>
+                <span class="font-medium text-white">{{ formatImageBillingTier(tooltipData, t) }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageSizeSource') }}</span>
                 <span class="font-medium text-white">{{ formatImageSizeSource(tooltipData, t) }}</span>
               </div>
@@ -440,6 +448,8 @@ import {
 } from '@/utils/billingMode'
 import {
   formatImageBillingSize,
+  formatImageBillingTier,
+  formatImageQuality,
   formatImageInputSize,
   formatImageOutputSize,
   formatImageSizeBreakdown,

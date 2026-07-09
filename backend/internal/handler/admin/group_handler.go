@@ -102,6 +102,10 @@ type CreateGroupRequest struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	ImageQualityBilling             bool     `json:"image_quality_billing"`
+	ImagePriceLow                   *float64 `json:"image_price_low"`
+	ImagePriceMedium                *float64 `json:"image_price_medium"`
+	ImagePriceHigh                  *float64 `json:"image_price_high"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
@@ -149,6 +153,10 @@ type UpdateGroupRequest struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	ImageQualityBilling             *bool    `json:"image_quality_billing"`
+	ImagePriceLow                   *float64 `json:"image_price_low"`
+	ImagePriceMedium                *float64 `json:"image_price_medium"`
+	ImagePriceHigh                  *float64 `json:"image_price_high"`
 	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
@@ -314,6 +322,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImageQualityBilling:             req.ImageQualityBilling,
+		ImagePriceLow:                   req.ImagePriceLow,
+		ImagePriceMedium:                req.ImagePriceMedium,
+		ImagePriceHigh:                  req.ImagePriceHigh,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -375,6 +387,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImageQualityBilling:             req.ImageQualityBilling,
+		ImagePriceLow:                   req.ImagePriceLow,
+		ImagePriceMedium:                req.ImagePriceMedium,
+		ImagePriceHigh:                  req.ImagePriceHigh,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

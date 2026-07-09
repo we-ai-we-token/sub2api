@@ -817,6 +817,17 @@
               />
               {{ t("admin.groups.imagePricing.independentMultiplier") }}
             </label>
+            <label
+              v-if="createForm.platform === 'openai'"
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="createForm.image_quality_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.qualityBilling") }}
+            </label>
           </div>
           <div
             v-if="createForm.image_rate_independent"
@@ -835,37 +846,18 @@
             />
           </div>
           <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="input-label">1K ($)</label>
+            <div
+              v-for="tier in getImagePricingTiers(createForm)"
+              :key="tier.key"
+            >
+              <label class="input-label">{{ tier.label }} ($)</label>
               <input
-                v-model.number="createForm.image_price_1k"
+                v-model.number="createForm[tier.key]"
                 type="number"
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.134"
-              />
-            </div>
-            <div>
-              <label class="input-label">2K ($)</label>
-              <input
-                v-model.number="createForm.image_price_2k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">4K ($)</label>
-              <input
-                v-model.number="createForm.image_price_4k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
+                :placeholder="tier.placeholder"
               />
             </div>
           </div>
@@ -2194,6 +2186,17 @@
               />
               {{ t("admin.groups.imagePricing.independentMultiplier") }}
             </label>
+            <label
+              v-if="editForm.platform === 'openai'"
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="editForm.image_quality_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.qualityBilling") }}
+            </label>
           </div>
           <div
             v-if="editForm.image_rate_independent"
@@ -2212,37 +2215,18 @@
             />
           </div>
           <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="input-label">1K ($)</label>
+            <div
+              v-for="tier in getImagePricingTiers(editForm)"
+              :key="tier.key"
+            >
+              <label class="input-label">{{ tier.label }} ($)</label>
               <input
-                v-model.number="editForm.image_price_1k"
+                v-model.number="editForm[tier.key]"
                 type="number"
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.134"
-              />
-            </div>
-            <div>
-              <label class="input-label">2K ($)</label>
-              <input
-                v-model.number="editForm.image_price_2k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">4K ($)</label>
-              <input
-                v-model.number="editForm.image_price_4k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
+                :placeholder="tier.placeholder"
               />
             </div>
           </div>
@@ -3631,6 +3615,10 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_quality_billing: false,
+  image_price_low: null as number | null,
+  image_price_medium: null as number | null,
+  image_price_high: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -3969,6 +3957,10 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_quality_billing: false,
+  image_price_low: null as number | null,
+  image_price_medium: null as number | null,
+  image_price_high: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4003,23 +3995,39 @@ const editForm = reactive({
 });
 
 type ImagePricingFormState = {
+  platform: GroupPlatform;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
   image_price_1k: number | string | null;
   image_price_2k: number | string | null;
   image_price_4k: number | string | null;
+  image_quality_billing: boolean;
+  image_price_low: number | string | null;
+  image_price_medium: number | string | null;
+  image_price_high: number | string | null;
   peak_rate_enabled: boolean;
   peak_start: string;
   peak_end: string;
   peak_rate_multiplier: number;
 };
 
-const imagePricingTiers = [
-  { key: "image_price_1k", label: "1K" },
-  { key: "image_price_2k", label: "2K" },
-  { key: "image_price_4k", label: "4K" },
+const imageSizePricingTiers = [
+  { key: "image_price_1k", label: "1K", placeholder: "0.134" },
+  { key: "image_price_2k", label: "2K", placeholder: "0.201" },
+  { key: "image_price_4k", label: "4K", placeholder: "0.268" },
 ] as const;
+
+const imageQualityPricingTiers = [
+  { key: "image_price_low", label: "low", placeholder: "0.134" },
+  { key: "image_price_medium", label: "medium", placeholder: "0.201" },
+  { key: "image_price_high", label: "high", placeholder: "0.268" },
+] as const;
+
+const getImagePricingTiers = (form: ImagePricingFormState) =>
+  form.platform === "openai" && form.image_quality_billing
+    ? imageQualityPricingTiers
+    : imageSizePricingTiers;
 
 const normalizePreviewNumber = (value: number | string | null | undefined, fallback = 0) => {
   if (value === null || value === undefined || value === "") {
@@ -4044,7 +4052,7 @@ const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
   const multiplier = form.image_rate_independent
     ? normalizePreviewNumber(form.image_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
-  return imagePricingTiers.map((tier) => {
+  return getImagePricingTiers(form).map((tier) => {
     const basePrice = normalizePreviewNumber(form[tier.key]);
     return {
       label: tier.label,
@@ -4245,6 +4253,10 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.image_quality_billing = false;
+  createForm.image_price_low = null;
+  createForm.image_price_medium = null;
+  createForm.image_price_high = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -4323,6 +4335,10 @@ const handleCreateGroup = async () => {
         createForm.platform === "openai"
           ? createForm.image_use_responses_api
           : undefined,
+      image_quality_billing:
+        createForm.platform === "openai"
+          ? createForm.image_quality_billing
+          : false,
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
@@ -4386,6 +4402,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.image_quality_billing = group.image_quality_billing ?? false;
+  editForm.image_price_low = group.image_price_low ?? null;
+  editForm.image_price_medium = group.image_price_medium ?? null;
+  editForm.image_price_high = group.image_price_high ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
@@ -4438,6 +4458,10 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.image_quality_billing = false;
+  editForm.image_price_low = null;
+  editForm.image_price_medium = null;
+  editForm.image_price_high = null;
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };
@@ -4481,6 +4505,10 @@ const handleUpdateGroup = async () => {
         editForm.platform === "openai"
           ? editForm.image_use_responses_api
           : undefined,
+      image_quality_billing:
+        editForm.platform === "openai"
+          ? editForm.image_quality_billing
+          : false,
       messages_dispatch_model_config:
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({

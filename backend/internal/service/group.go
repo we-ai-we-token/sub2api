@@ -42,6 +42,10 @@ type Group struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
+	ImageQualityBilling  bool
+	ImagePriceLow        *float64
+	ImagePriceMedium     *float64
+	ImagePriceHigh       *float64
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
@@ -120,6 +124,12 @@ func (g *Group) GetImagePrice(imageSize string) *float64 {
 		return g.ImagePrice2K
 	case "4K":
 		return g.ImagePrice4K
+	case "low":
+		return g.ImagePriceLow
+	case "medium":
+		return g.ImagePriceMedium
+	case "high":
+		return g.ImagePriceHigh
 	default:
 		// 未知尺寸默认按 2K 计费
 		return g.ImagePrice2K

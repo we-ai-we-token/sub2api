@@ -214,12 +214,13 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens              int    `json:"input_tokens"`
+	ImageInputTokens         int    `json:"image_input_tokens,omitempty"`
+	OutputTokens             int    `json:"output_tokens"`
+	CacheCreationInputTokens int    `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int    `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int    `json:"image_output_tokens,omitempty"`
+	Quality                  string `json:"quality,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -5658,6 +5659,7 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreationInputTokens: int(value.Get("cache_creation_input_tokens").Int()),
 		CacheReadInputTokens:     int(cacheReadTokens),
 		ImageOutputTokens:        int(imageOutputTokens),
+		Quality:                  strings.TrimSpace(value.Get("quality").String()),
 	}, true
 }
 
@@ -6451,6 +6453,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
 	}
+	imageBillingDecision := s.resolveOpenAIImageUsageBillingDecision(ctx, firstUsageBillingModel(billingModels), apiKey, result, cost)
 
 	usageLog := &UsageLog{
 		UserID:              user.ID,
@@ -6474,7 +6477,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageInputSize:      optionalTrimmedStringPtr(result.ImageInputSize),
 		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageQuality:        optionalTrimmedStringPtr(imageBillingDecision.Quality),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		BillingTier:         optionalTrimmedStringPtr(imageBillingDecision.BillingTier),
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
@@ -6657,7 +6662,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	result *OpenAIForwardResult,
 	multiplier float64,
 ) *CostBreakdown {
-	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	decision := resolveOpenAIGroupImageBillingDecision(apiKey, result)
 	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
@@ -6666,7 +6671,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			Model:          billingModel,
 			GroupID:        &gid,
 			RequestCount:   result.ImageCount,
-			SizeTier:       sizeTier,
+			SizeTier:       decision.SizeTier,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
@@ -6680,12 +6685,71 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	var groupConfig *ImagePriceConfig
 	if apiKey != nil && apiKey.Group != nil {
 		groupConfig = &ImagePriceConfig{
-			Price1K: apiKey.Group.ImagePrice1K,
-			Price2K: apiKey.Group.ImagePrice2K,
-			Price4K: apiKey.Group.ImagePrice4K,
+			Price1K:     apiKey.Group.ImagePrice1K,
+			Price2K:     apiKey.Group.ImagePrice2K,
+			Price4K:     apiKey.Group.ImagePrice4K,
+			PriceLow:    apiKey.Group.ImagePriceLow,
+			PriceMedium: apiKey.Group.ImagePriceMedium,
+			PriceHigh:   apiKey.Group.ImagePriceHigh,
 		}
 	}
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCost(billingModel, decision.BillingTier, result.ImageCount, groupConfig, multiplier)
+}
+
+type openAIImageBillingDecision struct {
+	SizeTier    string
+	Quality     string
+	BillingTier string
+}
+
+func resolveOpenAIGroupImageBillingDecision(apiKey *APIKey, result *OpenAIForwardResult) openAIImageBillingDecision {
+	sizeTier := ImageBillingSize2K
+	if result != nil {
+		sizeTier = NormalizeImageBillingTierOrDefault(result.ImageSize)
+	}
+	quality := ""
+	if result != nil {
+		quality = NormalizeOpenAIImageQualityOrEmpty(result.Usage.Quality)
+	}
+	billingTier := sizeTier
+	if isOpenAIGroupImageQualityBillingEnabled(apiKey) {
+		quality = NormalizeOpenAIImageQualityOrLow(quality)
+		billingTier = quality
+	}
+	return openAIImageBillingDecision{
+		SizeTier:    sizeTier,
+		Quality:     quality,
+		BillingTier: billingTier,
+	}
+}
+
+func isOpenAIGroupImageQualityBillingEnabled(apiKey *APIKey) bool {
+	return apiKey != nil &&
+		apiKey.Group != nil &&
+		apiKey.Group.Platform == PlatformOpenAI &&
+		apiKey.Group.ImageQualityBilling
+}
+
+func (s *OpenAIGatewayService) resolveOpenAIImageUsageBillingDecision(
+	ctx context.Context,
+	billingModel string,
+	apiKey *APIKey,
+	result *OpenAIForwardResult,
+	cost *CostBreakdown,
+) openAIImageBillingDecision {
+	if result == nil || result.ImageCount <= 0 {
+		return openAIImageBillingDecision{}
+	}
+	decision := resolveOpenAIGroupImageBillingDecision(apiKey, result)
+	if cost != nil && cost.BillingMode == string(BillingModeToken) {
+		decision.BillingTier = ""
+		return decision
+	}
+	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
+		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
+		decision.BillingTier = decision.SizeTier
+	}
+	return decision
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {

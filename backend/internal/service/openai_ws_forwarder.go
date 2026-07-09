@@ -4283,10 +4283,12 @@ func populateOpenAIUsageFromResponseJSON(body []byte, usage *OpenAIUsage) {
 		"usage.input_tokens",
 		"usage.output_tokens",
 		"usage.input_tokens_details.cached_tokens",
+		"usage.quality",
 	)
 	usage.InputTokens = int(values[0].Int())
 	usage.OutputTokens = int(values[1].Int())
 	usage.CacheReadInputTokens = int(values[2].Int())
+	usage.Quality = strings.TrimSpace(values[3].String())
 }
 
 func getOpenAIGroupIDFromContext(c *gin.Context) int64 {

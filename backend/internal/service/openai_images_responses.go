@@ -413,7 +413,8 @@ func usageFromOpenAIImageGenToolUsageRaw(raw []byte) (OpenAIUsage, bool) {
 		usage.OutputTokens == 0 &&
 		usage.CacheCreationInputTokens == 0 &&
 		usage.CacheReadInputTokens == 0 &&
-		usage.ImageOutputTokens == 0 {
+		usage.ImageOutputTokens == 0 &&
+		strings.TrimSpace(usage.Quality) == "" {
 		return OpenAIUsage{}, false
 	}
 	return usage, true
