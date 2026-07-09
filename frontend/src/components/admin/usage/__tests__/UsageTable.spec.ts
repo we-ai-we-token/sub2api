@@ -291,6 +291,38 @@ describe('admin UsageTable tooltip', () => {
     }
   })
 
+  it.each([
+    { billingTier: 'medium', imageSize: '1K', expected: '2 images/ medium', unexpected: '2 images/ 1K' },
+    { billingTier: '4K', imageSize: '2K', expected: '2 images/ 4K', unexpected: '2 images/ 2K' },
+  ])('shows image billing tier in the token column for $billingTier billing', ({ billingTier, imageSize, expected, unexpected }) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: `req-image-tier-${billingTier}`,
+            image_size: imageSize,
+            billing_tier: billingTier,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const compactText = wrapper.text().replace(/\s+/g, ' ').trim()
+    expect(compactText).toContain(expected)
+    expect(compactText).not.toContain(unexpected)
+  })
+
   it('displays historical image rows with missing billing_mode as image usage without a 2K fallback', async () => {
     const wrapper = mount(UsageTable, {
       props: {

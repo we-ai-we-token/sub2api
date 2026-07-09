@@ -637,6 +637,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		IPAddress:             l.IPAddress,
 		CacheTTLOverridden:    l.CacheTTLOverridden,
 		BillingMode:           l.BillingMode,
+		BillingTier:           l.BillingTier,
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),

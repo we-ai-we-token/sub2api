@@ -514,6 +514,7 @@ type UsageLog struct {
 
 	// BillingMode 计费模式：token/image
 	BillingMode *string `json:"billing_mode,omitempty"`
+	BillingTier *string `json:"billing_tier,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 
