@@ -5595,10 +5595,22 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return OpenAIUsage{}, false
 	}
-	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+	root := gjson.ParseBytes(body)
+	if usage, ok := openAIUsageFromGJSON(root.Get("usage")); ok {
+		if strings.TrimSpace(usage.Quality) == "" {
+			usage.Quality = extractOpenAIImageResponseQuality(root)
+		}
 		return usage, true
 	}
-	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	usage, ok := openAIUsageFromGJSON(root.Get("response.usage"))
+	if ok && strings.TrimSpace(usage.Quality) == "" {
+		usage.Quality = extractOpenAIImageResponseQuality(root)
+	}
+	return usage, ok
+}
+
+func extractOpenAIImageResponseQuality(root gjson.Result) string {
+	return firstGJSONTrimmedString(root, "quality", "response.quality", "tools.0.quality", "response.tools.0.quality")
 }
 
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {

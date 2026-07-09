@@ -57,9 +57,11 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	if c == nil || len(body) == 0 || !gjson.ValidBytes(body) {
 		return
 	}
-	c.addDataArray(gjson.GetBytes(body, "data"))
-	c.addOutputArray(gjson.GetBytes(body, "output"))
-	c.addOutputArray(gjson.GetBytes(body, "response.output"))
+	root := gjson.ParseBytes(body)
+	c.addDataArray(root.Get("data"))
+	c.addOutputArray(root.Get("output"))
+	c.addOutputArray(root.Get("response.output"))
+	c.addRootSizeFallback(root)
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
@@ -77,14 +79,17 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 	case "image_generation.completed":
 		if item := root.Get("item"); item.Exists() {
 			c.addImageOutputItem(item)
+			c.addRootSizeFallback(root)
 			return
 		}
 		if output := root.Get("output"); output.Exists() {
 			c.addImageOutputItem(output)
+			c.addRootSizeFallback(root)
 			return
 		}
 		c.addImageOutputItem(root)
 	}
+	c.addRootSizeFallback(root)
 }
 
 func (c *openAIImageOutputCounter) AddSSEBody(body string) {
@@ -177,6 +182,47 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		c.seenSizes[key] = size
 	}
 	c.count++
+}
+
+func (c *openAIImageOutputCounter) addRootSizeFallback(root gjson.Result) {
+	if c == nil || c.Count() <= 0 || c.hasAnySize() {
+		return
+	}
+	size := firstGJSONTrimmedString(root, "size", "response.size", "tools.0.size", "response.tools.0.size")
+	if size == "" {
+		return
+	}
+	count := c.Count()
+	c.dataSizes = make([]string, 0, count)
+	for range count {
+		c.dataSizes = append(c.dataSizes, size)
+	}
+}
+
+func (c *openAIImageOutputCounter) hasAnySize() bool {
+	if c == nil {
+		return false
+	}
+	for _, size := range c.seenSizes {
+		if strings.TrimSpace(size) != "" {
+			return true
+		}
+	}
+	for _, size := range c.dataSizes {
+		if strings.TrimSpace(size) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstGJSONTrimmedString(root gjson.Result, paths ...string) string {
+	for _, path := range paths {
+		if value := strings.TrimSpace(root.Get(path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func hashOpenAIImageOutputResult(result string) string {

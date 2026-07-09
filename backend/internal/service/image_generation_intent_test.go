@@ -219,6 +219,56 @@ func TestCollectOpenAIResponseImageOutputSizesFromImagesAPIData(t *testing.T) {
 	require.Equal(t, []string{"2048x1152", "2048x1152"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
 }
 
+func TestCollectOpenAIResponseImageOutputSizesFallsBackToRootSize(t *testing.T) {
+	body := []byte(`{
+		"quality": "medium",
+		"size": "1024x1024",
+		"data": [
+			{"b64_json":"final-a"},
+			{"b64_json":"final-b"}
+		],
+		"usage": {
+			"input_tokens": 1,
+			"output_tokens": 1756,
+			"output_tokens_details": {"image_tokens": 1756}
+		}
+	}`)
+
+	require.Equal(t, 2, countOpenAIResponseImageOutputsFromJSONBytes(body))
+	require.Equal(t, []string{"1024x1024", "1024x1024"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+}
+
+func TestExtractOpenAIUsageFromJSONBytesFallsBackToRootQuality(t *testing.T) {
+	body := []byte(`{
+		"background": "auto",
+		"output_format": "png",
+		"quality": "medium",
+		"size": "1024x1024",
+		"model": "gpt-image-2",
+		"usage": {
+			"input_tokens": 1,
+			"input_tokens_details": {
+				"image_tokens": 0,
+				"text_tokens": 1
+			},
+			"output_tokens": 1756,
+			"output_tokens_details": {
+				"image_tokens": 1756,
+				"text_tokens": 0
+			},
+			"total_tokens": 1757
+		}
+	}`)
+
+	usage, ok := extractOpenAIUsageFromJSONBytes(body)
+
+	require.True(t, ok)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 1756, usage.OutputTokens)
+	require.Equal(t, 1756, usage.ImageOutputTokens)
+	require.Equal(t, "medium", usage.Quality)
+}
+
 func TestCollectOpenAIImageOutputSizesFromSSEBody(t *testing.T) {
 	body := "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\",\"size\":\"3840x2160\"}}\n\n" +
 		"data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\"},{\"id\":\"ig_2\",\"type\":\"image_generation_call\",\"result\":\"final-b\",\"size\":\"1024x1024\"}]}}\n\n" +
@@ -226,4 +276,12 @@ func TestCollectOpenAIImageOutputSizesFromSSEBody(t *testing.T) {
 
 	require.Equal(t, 2, countOpenAIImageOutputsFromSSEBody(body))
 	require.Equal(t, []string{"3840x2160", "1024x1024"}, collectOpenAIImageOutputSizesFromSSEBody(body))
+}
+
+func TestCollectOpenAIImageOutputSizesFromSSEBodyFallsBackToResponseToolSize(t *testing.T) {
+	body := "data: {\"type\":\"response.completed\",\"response\":{\"tools\":[{\"type\":\"image_generation\",\"size\":\"1024x1024\"}],\"output\":[{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\"},{\"id\":\"ig_2\",\"type\":\"image_generation_call\",\"result\":\"final-b\"}]}}\n\n" +
+		"data: [DONE]\n\n"
+
+	require.Equal(t, 2, countOpenAIImageOutputsFromSSEBody(body))
+	require.Equal(t, []string{"1024x1024", "1024x1024"}, collectOpenAIImageOutputSizesFromSSEBody(body))
 }
