@@ -220,6 +220,8 @@ const searchQuery = ref('')
 /** 选中分组的有效倍率（后端返回，已含用户专属覆盖）。 */
 const tokenMultiplier = ref(1)
 const imageMultiplier = ref(1)
+/** 选中分组是否按生图质量（low/medium/high）计费；false 时按尺寸（1K/2K/4K）。 */
+const imageQualityBilling = ref(false)
 
 /** 每百万 token 换算系数。 */
 const PER_MILLION = 1_000_000
@@ -278,14 +280,36 @@ function formatRate(rate: number): string {
 }
 
 /**
- * 生图按次模型的 1K/2K/4K 档位（价格已按图片倍率折算），用于渲染彩色标签：
- *  - image_tiers 有任一档价格 → 三档（缺失档位显示 "-"）；
+ * 生图按次模型的档位（价格已按图片倍率折算），用于渲染彩色标签。
+ * 质量计费分组用 low/medium/high 三档，否则用 1K/2K/4K 三档：
+ *  - image_tiers 对应计费口径有任一档价格 → 三档（缺失档位显示 "-"）；
  *  - 仅有 flat 按次价（resolveImageTier 通常已回落填满三档，这里兜底）→ 三档同价；
  *  - 都没有 → 空数组（模板显示"未配置定价"）。
  */
 function perRequestTiers(m: ModelPlazaModel): { label: string; price: string }[] {
   const fold = (v: number | null): string => formatScaled(v == null ? null : v * imageMultiplier.value, 1)
   const tiers = m.image_tiers
+  if (imageQualityBilling.value) {
+    const hasTier =
+      tiers != null &&
+      (tiers.price_low != null || tiers.price_medium != null || tiers.price_high != null)
+    if (hasTier) {
+      return [
+        { label: 'low', price: fold(tiers!.price_low) },
+        { label: 'medium', price: fold(tiers!.price_medium) },
+        { label: 'high', price: fold(tiers!.price_high) },
+      ]
+    }
+    if (m.per_request_price != null) {
+      const v = fold(m.per_request_price)
+      return [
+        { label: 'low', price: v },
+        { label: 'medium', price: v },
+        { label: 'high', price: v },
+      ]
+    }
+    return []
+  }
   const hasTier =
     tiers != null && (tiers.price_1k != null || tiers.price_2k != null || tiers.price_4k != null)
   if (hasTier) {
@@ -306,14 +330,17 @@ function perRequestTiers(m: ModelPlazaModel): { label: string; price: string }[]
   return []
 }
 
-/** 1K/2K/4K 各用一种颜色，便于一眼区分不同分辨率单价。 */
+/** 每档一种颜色，便于一眼区分不同分辨率/质量单价。 */
 function tierBadgeClass(label: string): string {
   switch (label) {
     case '1K':
+    case 'low':
       return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300'
     case '2K':
+    case 'medium':
       return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-900/20 dark:text-violet-300'
     case '4K':
+    case 'high':
       return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300'
     default:
       return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300'
@@ -328,6 +355,7 @@ async function load(groupId?: number) {
     models.value = data.models
     tokenMultiplier.value = data.token_multiplier
     imageMultiplier.value = data.image_multiplier
+    imageQualityBilling.value = data.image_quality_billing
     // 后端已回退到 id 最小的分组；以其返回值为准同步选择框。
     selectedGroupId.value = data.selected_group_id || data.groups[0]?.id || null
   } catch (err: unknown) {

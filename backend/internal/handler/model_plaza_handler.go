@@ -61,12 +61,18 @@ type modelPlazaGroup struct {
 	UserRateMultiplier *float64 `json:"user_rate_multiplier"`
 }
 
-// modelPlazaImageTiers 生图（按次）模型的 1K/2K/4K 价格（已折算）。
+// modelPlazaImageTiers 生图（按次）模型的档位价格（已折算）。
+//
+// 分组按尺寸计费时填 Price1K/2K/4K；OpenAI 分组开启「质量计费」
+// （ImageQualityBilling）时改填 PriceLow/Medium/High。两组互斥，未启用的一组为空。
 // 任一档位可能为空（渠道与分组都未配置）。
 type modelPlazaImageTiers struct {
-	Price1K *float64 `json:"price_1k"`
-	Price2K *float64 `json:"price_2k"`
-	Price4K *float64 `json:"price_4k"`
+	Price1K     *float64 `json:"price_1k"`
+	Price2K     *float64 `json:"price_2k"`
+	Price4K     *float64 `json:"price_4k"`
+	PriceLow    *float64 `json:"price_low"`
+	PriceMedium *float64 `json:"price_medium"`
+	PriceHigh   *float64 `json:"price_high"`
 }
 
 // modelPlazaModel 模型清单中的一行（价格为「原价」，未折算）。
@@ -100,7 +106,10 @@ type modelPlazaResponse struct {
 	SelectedGroupID int64             `json:"selected_group_id"`
 	TokenMultiplier float64           `json:"token_multiplier"`
 	ImageMultiplier float64           `json:"image_multiplier"`
-	Models          []modelPlazaModel `json:"models"`
+	// ImageQualityBilling 为 true 时，选中分组按生图质量（low/medium/high）计费，
+	// 生图行应展示 price_low/medium/high；否则按尺寸（1K/2K/4K）计费。
+	ImageQualityBilling bool              `json:"image_quality_billing"`
+	Models              []modelPlazaModel `json:"models"`
 }
 
 // Models 返回模型广场数据：用户可选分组列表 + 选中分组的模型清单（含折算后定价）。
@@ -159,6 +168,8 @@ func (h *ModelPlazaHandler) Models(c *gin.Context) {
 	tokenMult, imageMult := effectiveMultipliers(selected, userRates)
 	out.TokenMultiplier = tokenMult
 	out.ImageMultiplier = imageMult
+	// OpenAI 分组开启质量计费时，生图行改按 low/medium/high 展示（与实际计费口径一致）。
+	out.ImageQualityBilling = selected.ImageQualityBilling
 
 	channels, err := h.channelService.ListAvailable(ctx)
 	if err != nil {
@@ -295,7 +306,11 @@ func buildModelPlazaModels(
 	}
 
 	// 补齐账号可调用但渠道未单独定价的模型（用内置定价 / 分组生图价回落）。
+	// 生图价按计费口径二选一：质量计费看 low/medium/high，否则看 1K/2K/4K。
 	groupHasImagePrice := group.ImagePrice1K != nil || group.ImagePrice2K != nil || group.ImagePrice4K != nil
+	if group.ImageQualityBilling {
+		groupHasImagePrice = group.ImagePriceLow != nil || group.ImagePriceMedium != nil || group.ImagePriceHigh != nil
+	}
 	for _, name := range accountModels {
 		if _, ok := byName[strings.ToLower(name)]; ok {
 			continue // 已被渠道定价 / 通配符展开覆盖，保留其定价
@@ -451,10 +466,20 @@ func toModelPlazaModel(
 	switch p.BillingMode {
 	case service.BillingModeImage, service.BillingModePerRequest:
 		out.PerRequestPrice = p.PerRequestPrice
-		out.ImageTiers = &modelPlazaImageTiers{
-			Price1K: resolveImageTier(p, group, "1K"),
-			Price2K: resolveImageTier(p, group, "2K"),
-			Price4K: resolveImageTier(p, group, "4K"),
+		// OpenAI 分组开启质量计费时，档位改为 low/medium/high；否则按尺寸 1K/2K/4K。
+		// 两者复用同一套 resolveImageTier（渠道区间 → 渠道 flat 价 → 分组档价）回落逻辑。
+		if group.ImageQualityBilling {
+			out.ImageTiers = &modelPlazaImageTiers{
+				PriceLow:    resolveImageTier(p, group, "low"),
+				PriceMedium: resolveImageTier(p, group, "medium"),
+				PriceHigh:   resolveImageTier(p, group, "high"),
+			}
+		} else {
+			out.ImageTiers = &modelPlazaImageTiers{
+				Price1K: resolveImageTier(p, group, "1K"),
+				Price2K: resolveImageTier(p, group, "2K"),
+				Price4K: resolveImageTier(p, group, "4K"),
+			}
 		}
 	default:
 		out.InputPrice = p.InputPrice

@@ -240,7 +240,35 @@ func TestBuildModelPlazaModels_SingleModelGroupPriceOnly(t *testing.T) {
 	require.InDelta(t, 0.08, *m.ImageTiers.Price4K, 1e-9)
 }
 
-// 线上场景：openai 生图分组，账号有 gpt-image-2 / -low / -medium / -high 四个模型；
+// OpenAI 分组开启质量计费时，生图行改按 low/medium/high 展示（对齐 billing 口径），
+// 尺寸档 1K/2K/4K 应为空。gpt-image-2 无渠道定价，走分组质量价。
+func TestBuildModelPlazaModels_QualityBilling(t *testing.T) {
+	group := &service.Group{
+		ID: 1, Platform: "openai",
+		ImageQualityBilling: true,
+		ImagePriceLow:       floatPtr(0.03),
+		ImagePriceMedium:    floatPtr(0.05),
+		ImagePriceHigh:      floatPtr(0.1),
+	}
+	pricingFor := func(model string) *service.ChannelModelPricing {
+		return &service.ChannelModelPricing{BillingMode: service.BillingModeImage, Platform: "openai"}
+	}
+
+	models := buildModelPlazaModels(nil, group, []string{"gpt-image-2"}, pricingFor)
+
+	require.Len(t, models, 1)
+	m := models[0]
+	require.Equal(t, "gpt-image-2", m.Name)
+	require.Equal(t, string(service.BillingModeImage), m.BillingMode)
+	require.NotNil(t, m.ImageTiers)
+	require.InDelta(t, 0.03, *m.ImageTiers.PriceLow, 1e-9)
+	require.InDelta(t, 0.05, *m.ImageTiers.PriceMedium, 1e-9)
+	require.InDelta(t, 0.1, *m.ImageTiers.PriceHigh, 1e-9)
+	// 质量计费下不填尺寸档。
+	require.Nil(t, m.ImageTiers.Price1K)
+	require.Nil(t, m.ImageTiers.Price2K)
+	require.Nil(t, m.ImageTiers.Price4K)
+}
 // 渠道只给 low/medium/high 配了 flat 按次价（0.03/0.05/0.1），gpt-image-2 无渠道定价，
 // 计费走分组分辨率价（1K0.06/2K0.08/4K0.12）。广场应显示全部 4 个，价格与计费一致。
 func TestBuildModelPlazaModels_FourImageModels(t *testing.T) {

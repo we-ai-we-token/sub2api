@@ -26,11 +26,19 @@ export interface ModelPlazaGroup {
   user_rate_multiplier: number | null
 }
 
-/** 生图（按次）模型的 1K/2K/4K 价格（已折算，单位：每次）。任一档位可能为 null。 */
+/**
+ * 生图（按次）模型的档位价格（已折算，单位：每次）。
+ *
+ * 分组按尺寸计费时用 price_1k/2k/4k；OpenAI 分组开启质量计费时改用
+ * price_low/medium/high。两组互斥，未启用的一组为 null。
+ */
 export interface ModelPlazaImageTiers {
   price_1k: number | null
   price_2k: number | null
   price_4k: number | null
+  price_low: number | null
+  price_medium: number | null
+  price_high: number | null
 }
 
 export interface ModelPlazaModel {
@@ -56,6 +64,8 @@ export interface ModelPlazaResponse {
   token_multiplier: number
   /** 选中分组的图片有效倍率，前端用于折算生图按次价。 */
   image_multiplier: number
+  /** 选中分组是否按生图质量（low/medium/high）计费；false 时按尺寸（1K/2K/4K）。 */
+  image_quality_billing: boolean
   models: ModelPlazaModel[]
 }
 
