@@ -466,9 +466,12 @@ func toModelPlazaModel(
 	switch p.BillingMode {
 	case service.BillingModeImage, service.BillingModePerRequest:
 		out.PerRequestPrice = p.PerRequestPrice
-		// OpenAI 分组开启质量计费时，档位改为 low/medium/high；否则按尺寸 1K/2K/4K。
-		// 两者复用同一套 resolveImageTier（渠道区间 → 渠道 flat 价 → 分组档价）回落逻辑。
-		if group.ImageQualityBilling {
+		// 档位口径按「分组是否质量计费 + 该模型有无渠道价」逐模型决定：
+		//  - 分组开质量计费且该模型无渠道价（如 gpt-image-2）→ 回落分组质量价，展示 low/medium/high；
+		//  - 其余（该模型配了渠道价，或分组按尺寸计费）→ 展示 1K/2K/4K（渠道价/分组尺寸价）。
+		// 两条分支复用同一套 resolveImageTier（渠道区间 → 渠道 flat 价 → 分组档价）回落逻辑，
+		// 与真实计费口径保持一致；同组内不同模型可呈现不同档位类型。
+		if group.ImageQualityBilling && !channelHasExplicitImagePrice(p) {
 			out.ImageTiers = &modelPlazaImageTiers{
 				PriceLow:    resolveImageTier(p, group, "low"),
 				PriceMedium: resolveImageTier(p, group, "medium"),
@@ -489,6 +492,27 @@ func toModelPlazaModel(
 		out.ImageOutputPrice = p.ImageOutputPrice
 	}
 	return out
+}
+
+// channelHasExplicitImagePrice 判断该模型的渠道定价是否显式配置了按次价
+// （flat PerRequestPrice 或任一区间 PerRequestPrice）。
+//
+// 用于模型广场档位口径选择：分组开质量计费时，只有「渠道未配价、计费回落分组质量价」
+// 的模型才展示 low/medium/high；渠道已配价的模型（如 gpt-image-2-low/-medium/-high）
+// 计费走渠道价，仍展示 1K/2K/4K。
+func channelHasExplicitImagePrice(p *service.ChannelModelPricing) bool {
+	if p == nil {
+		return false
+	}
+	if p.PerRequestPrice != nil {
+		return true
+	}
+	for i := range p.Intervals {
+		if p.Intervals[i].PerRequestPrice != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveImageTier 解析某档位（1K/2K/4K）的按次单价，优先级与真实计费

@@ -281,38 +281,30 @@ function formatRate(rate: number): string {
 
 /**
  * 生图按次模型的档位（价格已按图片倍率折算），用于渲染彩色标签。
- * 质量计费分组用 low/medium/high 三档，否则用 1K/2K/4K 三档：
- *  - image_tiers 对应计费口径有任一档价格 → 三档（缺失档位显示 "-"）；
- *  - 仅有 flat 按次价（resolveImageTier 通常已回落填满三档，这里兜底）→ 三档同价；
+ *
+ * 档位口径由后端逐模型决定（同组内不同模型可不同）：质量计费分组里「渠道未配价」
+ * 的模型填 low/medium/high，其余填 1K/2K/4K。这里按后端实际填充的档位渲染：
+ *  - image_tiers 对应档位有任一价格 → 三档（缺失档位显示 "-"）；
+ *  - 仅有 flat 按次价（resolveImageTier 通常已回落填满三档，这里兜底）→ 三档同价，
+ *    档位标签跟随分组质量计费标志；
  *  - 都没有 → 空数组（模板显示"未配置定价"）。
  */
 function perRequestTiers(m: ModelPlazaModel): { label: string; price: string }[] {
   const fold = (v: number | null): string => formatScaled(v == null ? null : v * imageMultiplier.value, 1)
   const tiers = m.image_tiers
-  if (imageQualityBilling.value) {
-    const hasTier =
-      tiers != null &&
-      (tiers.price_low != null || tiers.price_medium != null || tiers.price_high != null)
-    if (hasTier) {
-      return [
-        { label: 'low', price: fold(tiers!.price_low) },
-        { label: 'medium', price: fold(tiers!.price_medium) },
-        { label: 'high', price: fold(tiers!.price_high) },
-      ]
-    }
-    if (m.per_request_price != null) {
-      const v = fold(m.per_request_price)
-      return [
-        { label: 'low', price: v },
-        { label: 'medium', price: v },
-        { label: 'high', price: v },
-      ]
-    }
-    return []
+  const hasQuality =
+    tiers != null &&
+    (tiers.price_low != null || tiers.price_medium != null || tiers.price_high != null)
+  if (hasQuality) {
+    return [
+      { label: 'low', price: fold(tiers!.price_low) },
+      { label: 'medium', price: fold(tiers!.price_medium) },
+      { label: 'high', price: fold(tiers!.price_high) },
+    ]
   }
-  const hasTier =
+  const hasSize =
     tiers != null && (tiers.price_1k != null || tiers.price_2k != null || tiers.price_4k != null)
-  if (hasTier) {
+  if (hasSize) {
     return [
       { label: '1K', price: fold(tiers!.price_1k) },
       { label: '2K', price: fold(tiers!.price_2k) },
@@ -321,11 +313,11 @@ function perRequestTiers(m: ModelPlazaModel): { label: string; price: string }[]
   }
   if (m.per_request_price != null) {
     const v = fold(m.per_request_price)
-    return [
-      { label: '1K', price: v },
-      { label: '2K', price: v },
-      { label: '4K', price: v },
-    ]
+    // 无任何档价的 flat 兜底：标签跟随分组是否质量计费。
+    const labels = imageQualityBilling.value
+      ? (['low', 'medium', 'high'] as const)
+      : (['1K', '2K', '4K'] as const)
+    return labels.map((label) => ({ label, price: v }))
   }
   return []
 }
