@@ -203,6 +203,11 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		return EndpointMessages
 
 	case service.PlatformGemini:
+		switch inbound {
+		case EndpointImagesGenerations, EndpointImagesEdits:
+			// Gemini 分组的 OpenAI Images 透传：上游即同名 images 端点
+			return inbound
+		}
 		return EndpointGeminiModels
 
 	case service.PlatformAntigravity:
