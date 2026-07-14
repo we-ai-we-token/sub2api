@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
 
@@ -31,9 +30,9 @@ func (s *GeminiMessagesCompatService) SelectGeminiAPIKeyAccountForImages(
 	selected := s.selectBestGeminiAccount(ctx, candidates, requestedModel, excludedIDs, PlatformGemini, false)
 	if selected == nil {
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available Gemini API-key accounts supporting model: %s", requestedModel)
+			return nil, fmt.Errorf("%w supporting model: %s", ErrNoAvailableAccounts, requestedModel)
 		}
-		return nil, errors.New("no available Gemini API-key accounts")
+		return nil, ErrNoAvailableAccounts
 	}
 	return s.hydrateSelectedAccount(ctx, selected)
 }

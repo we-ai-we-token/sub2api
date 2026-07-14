@@ -56,7 +56,7 @@ case service.PlatformGemini:
 
 新文件 `backend/internal/service/gemini_images_passthrough.go`：
 
-- 上游 URL：`{GetGeminiBaseURL(account)}/v1/images/generations|edits`（`backend/internal/service/account.go:889`），沿用账号代理设置。
+- 上游 URL：`{账号 credentials.base_url}/v1/images/generations|edits`，`base_url` 缺失时按可切号错误处理（绝不回退到默认 Google AI Studio 端点），沿用账号代理设置。
 - 认证：`Authorization: Bearer {api_key}`（OpenAI 协议语义；不发 `x-goog-api-key`）。
 - 请求体：原样透传。仅当模型映射改名时改写 `model` 字段——JSON 直接改字段；multipart 重编码替换 `model` 一个 part，其余字节不动。
 - 响应：状态码、body（`data[].url` / `data[].b64_json` / `usage`）原样回写客户端，同时旁路解析一份用于计费。
