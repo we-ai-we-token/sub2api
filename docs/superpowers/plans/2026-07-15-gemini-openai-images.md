@@ -14,7 +14,7 @@
 
 - 分支 `feature/gemini-openai-images`；提交信息用 `feat:`/`test:`/`docs:` 前缀，结尾加 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`。
 - 所有 Go 命令在 `/Users/astray/api-token/sub2api/backend` 下执行；单测命令模式：`go test -tags=unit ./internal/service/ -run '<TestName>' -count=1`。
-- 不改变 OpenAI / Grok 平台现有行为（`imagesHandler` 的两个已有 case、`forwardOpenAIImagesAPIKey`、grok_media 均不动逻辑）。
+- 不改变 OpenAI / Grok 平台对既有模型名的行为（`imagesHandler` 的两个已有 case、`forwardOpenAIImagesAPIKey`、grok_media 均不动逻辑）。已知且接受的边缘变化：gemini 命名模型在 OpenAI 平台分组的 images/responses 路径从"parse 阶段 400"变为"可调度、由上游返回错误"——与 grok-imagine 模型在该路径的既有先例一致；计价安全（`matchOpenAIModel` 有 `gpt-` 前缀门，gemini 模型不会误中 gpt-image 兜底价）。
 - 仅支持非流式；`stream=true` 在 handler 层 400。
 - 仅调度 `Platform==gemini && Type==apikey`（常量 `AccountTypeAPIKey = "apikey"`）账号。
 - 映射后模型必须满足 `gemini-` 前缀且含 `image`（与运营报表 `ILIKE 'gemini-%image%'` 口径一致）。
@@ -133,7 +133,7 @@ git commit -m "feat: recognize gemini image models in openai images validation"
 
 - [ ] **Step 1: Write the failing test**
 
-新建 `backend/internal/service/gemini_images_account_selection_test.go`。账号仓库 stub 采用"内嵌接口 + 只实现所需方法"模式（参考 `gateway_multiplatform_test.go:23` 的 `mockAccountRepoForPlatform`）。注意 `listSchedulableAccountsOnce` 在 `schedulerSnapshot == nil` 且 `groupID != nil` 时调用 `ListSchedulableByGroupIDAndPlatforms`；先阅读该接口方法在 `AccountRepository` 中的准确签名再写 stub。
+新建 `backend/internal/service/gemini_images_account_selection_test.go`。账号仓库 stub 采用"内嵌接口 + 只实现所需方法"模式（先例：`account_credential_shadow_skip_test.go:20`）。注意 `listSchedulableAccountsOnce` 在 `schedulerSnapshot == nil` 且 `groupID != nil` 时调用 `ListSchedulableByGroupIDAndPlatforms`（这是该路径唯一会命中的 repo 方法）；先阅读该接口方法在 `AccountRepository` 中的准确签名再写 stub。账号夹具必须带 `Status: StatusActive, Schedulable: true`（`isAccountUsableForRequestWithPrecheck` → `IsSchedulable()` 会把零值账号静默过滤，先例：`gemini_multiplatform_test.go:311-313`）。
 
 ```go
 //go:build unit
@@ -167,9 +167,9 @@ func TestSelectGeminiAPIKeyAccountForImagesFiltersTypesAndPlatforms(t *testing.T
 	groupID := int64(7)
 	oauthUsed := time.Now().Add(-time.Hour)
 	accounts := []Account{
-		{ID: 1, Platform: PlatformGemini, Type: AccountTypeOAuth, LastUsedAt: &oauthUsed},
-		{ID: 2, Platform: PlatformAntigravity, Type: AccountTypeAPIKey, Extra: map[string]any{"mixed_scheduling": true}},
-		{ID: 3, Platform: PlatformGemini, Type: AccountTypeAPIKey},
+		{ID: 1, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, LastUsedAt: &oauthUsed},
+		{ID: 2, Platform: PlatformAntigravity, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Extra: map[string]any{"mixed_scheduling": true}},
+		{ID: 3, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
 	}
 	svc := geminiImagesSelectionService(accounts)
 
@@ -183,8 +183,8 @@ func TestSelectGeminiAPIKeyAccountForImagesHonorsExclusionsAndLRU(t *testing.T) 
 	older := time.Now().Add(-2 * time.Hour)
 	newer := time.Now().Add(-time.Minute)
 	accounts := []Account{
-		{ID: 11, Platform: PlatformGemini, Type: AccountTypeAPIKey, LastUsedAt: &newer},
-		{ID: 12, Platform: PlatformGemini, Type: AccountTypeAPIKey, LastUsedAt: &older},
+		{ID: 11, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, LastUsedAt: &newer},
+		{ID: 12, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, LastUsedAt: &older},
 	}
 	svc := geminiImagesSelectionService(accounts)
 
@@ -291,7 +291,9 @@ git commit -m "feat: add gemini api-key account selection for images passthrough
 
 - [ ] **Step 1: Write the failing tests**
 
-在 `gemini_images_passthrough_test.go` 追加（imports 增加 `bytes`, `context`, `io`, `net/http`, `net/http/httptest`, `strings`, `github.com/gin-gonic/gin`）。上游 stub 复用包内已有 `httpUpstreamRecorder`（openai_oauth_passthrough_test.go:27）：
+在 `gemini_images_passthrough_test.go` 追加（imports 增加 `bytes`, `context`, `io`, `mime/multipart`, `net/http`, `net/http/httptest`, `strings`, `github.com/gin-gonic/gin`, `"github.com/Wei-Shaw/sub2api/internal/config"`）。上游 stub 复用包内已有 `httpUpstreamRecorder`（openai_oauth_passthrough_test.go:27，无 build tag，`-tags=unit` 跑法同样会编译链接）。
+
+**关键**：每个 `OpenAIGatewayService` 字面量必须带 `cfg: &config.Config{}` —— `validateUpstreamBaseURL` 在 `cfg == nil` 时会解引用 nil panic（openai_gateway_request_body.go:28-31）；空 config 使 URL allowlist 关闭，任意可解析 https URL 通过（先例：openai_images_test.go:1154）。
 
 ```go
 func geminiPassthroughAccount() *Account {
@@ -321,7 +323,7 @@ func geminiPassthroughTestContext(t *testing.T, body []byte, contentType string)
 func TestForwardGeminiImagesPassthroughSuccess(t *testing.T) {
 	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat","response_format":"url"}`)
 	c, rec := geminiPassthroughTestContext(t, body, "application/json")
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body: io.NopCloser(strings.NewReader(
@@ -354,7 +356,7 @@ func TestForwardGeminiImagesPassthroughSuccess(t *testing.T) {
 func TestForwardGeminiImagesPassthroughRejectsNonGeminiMappedModel(t *testing.T) {
 	body := []byte(`{"model":"gpt-image-1","prompt":"draw"}`)
 	c, _ := geminiPassthroughTestContext(t, body, "application/json")
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{}}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -367,7 +369,7 @@ func TestForwardGeminiImagesPassthroughRejectsNonGeminiMappedModel(t *testing.T)
 func TestForwardGeminiImagesPassthroughMissingBaseURLFailsOver(t *testing.T) {
 	body := []byte(`{"model":"gemini-2.5-flash-image","prompt":"draw"}`)
 	c, _ := geminiPassthroughTestContext(t, body, "application/json")
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{}}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -382,7 +384,7 @@ func TestForwardGeminiImagesPassthroughMissingBaseURLFailsOver(t *testing.T) {
 func TestForwardGeminiImagesPassthrough429ReturnsFailover(t *testing.T) {
 	body := []byte(`{"model":"gemini-2.5-flash-image","prompt":"draw"}`)
 	c, rec := geminiPassthroughTestContext(t, body, "application/json")
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
@@ -400,7 +402,7 @@ func TestForwardGeminiImagesPassthrough429ReturnsFailover(t *testing.T) {
 func TestForwardGeminiImagesPassthroughUserErrorWritesThrough(t *testing.T) {
 	body := []byte(`{"model":"gemini-2.5-flash-image","prompt":"draw"}`)
 	c, rec := geminiPassthroughTestContext(t, body, "application/json")
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusBadRequest,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"bad prompt","type":"invalid_request_error"}}`)),
@@ -434,7 +436,7 @@ func TestForwardGeminiImagesPassthroughMultipartEditsRewritesModel(t *testing.T)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	svc := &OpenAIGatewayService{httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"created":1,"data":[{"b64_json":"aGk="}]}`)),
@@ -455,7 +457,6 @@ func TestForwardGeminiImagesPassthroughMultipartEditsRewritesModel(t *testing.T)
 }
 ```
 
-注意：若 `s.validateUpstreamBaseURL` 在零值 cfg 下拒绝自定义域名（URL allowlist），参考 `openai_images_test.go` 中使用 `image-upstream.example` 自定义 base_url 的测试如何构造 cfg/env，并照搬。
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -464,7 +465,7 @@ Expected: FAIL（方法未定义，编译错误）
 
 - [ ] **Step 3: Write minimal implementation**
 
-在 `backend/internal/service/gemini_images_passthrough.go` 追加（imports 参照 `openai_images.go` 同族文件补齐：`bytes`, `context`, `fmt`, `io`, `net/http`, `time`, gin, responseheaders 包）：
+在 `backend/internal/service/gemini_images_passthrough.go` 追加（imports 实际需要：`bytes`, `context`, `fmt`, `net/http`, `strings`（Task 1 已引入）, `time`, gin——不要多引 `io`/`responseheaders`，实现体用不到会编译报错；`setOpsUpstreamError` 第 4 参是 upstreamDetail 而非 requestID，传 `""` 即可）：
 
 ```go
 // ForwardGeminiImagesPassthrough 将 OpenAI Images 请求原样透传到 Gemini AI Studio
@@ -637,7 +638,7 @@ git commit -m "feat: forward openai images passthrough for gemini api-key accoun
 
 **Interfaces:**
 - Consumes: Task 2 的 `SelectGeminiAPIKeyAccountForImages`、Task 3 的 `ForwardGeminiImagesPassthrough`、Task 1 的 `service.IsGeminiImageGenerationModel`；handler 包既有辅助（签名见 grok_media.go 同款调用）：`recoverResponsesPanic` / `ensureResponsesDependencies` / `errorResponse` / `checkContentModeration` / `acquireImageGenerationSlot` / `acquireResponsesUserSlot` / `acquireResponsesAccountSlot` / `handleFailoverExhausted` / `classifyNoAccountErrorFromGin` / `setOps*` / `GetInboundEndpoint` / `GetUpstreamEndpoint` / `submitOpenAIUsageRecordTask` / `billingErrorDetails` / `contentModerationStatus` / `contentModerationErrorCode` / `requestLogger` / `extractMaxBytesError` / `buildBodyTooLargeMessage` / `sameAccountRetryDelay`。
-- Produces: `func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context)` — Task 5 路由分发调用；`OpenAIGatewayHandler` 新字段 `geminiCompatService *service.GeminiMessagesCompatService`。
+- Produces: `func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context)` — Task 5 路由分发调用；`OpenAIGatewayHandler` 新字段 `geminiCompatService *service.GeminiMessagesCompatService`；包内辅助 `buildGeminiImagesAccountSelection(account *service.Account, cfg *config.Config) *service.AccountSelectionResult`（构造带 `AccountWaitPlan` 的 selection，字段见 gateway_service.go:512-519）。
 
 - [ ] **Step 1: DI 注入（先改依赖，保证编译）**
 
@@ -743,7 +744,27 @@ func TestGeminiImagesRejectsNonGeminiMappedModel(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Contains(t, rec.Body.String(), "gpt-image-1")
 }
+
+func TestBuildGeminiImagesAccountSelectionProvidesWaitPlan(t *testing.T) {
+	account := &service.Account{ID: 5, Concurrency: 2}
+
+	sel := buildGeminiImagesAccountSelection(account, nil)
+	require.NotNil(t, sel.WaitPlan, "缺少 WaitPlan 会被 acquireResponsesAccountSlot 直接 503")
+	require.Equal(t, int64(5), sel.WaitPlan.AccountID)
+	require.Equal(t, 2, sel.WaitPlan.MaxConcurrency)
+	require.Positive(t, sel.WaitPlan.Timeout)
+	require.Positive(t, sel.WaitPlan.MaxWaiting)
+
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.FallbackWaitTimeout = 7 * time.Second
+	cfg.Gateway.Scheduling.FallbackMaxWaiting = 9
+	sel = buildGeminiImagesAccountSelection(account, cfg)
+	require.Equal(t, 7*time.Second, sel.WaitPlan.Timeout)
+	require.Equal(t, 9, sel.WaitPlan.MaxWaiting)
+}
 ```
+
+（测试文件 imports 相应增加 `time` 与 `"github.com/Wei-Shaw/sub2api/internal/config"`。三个拒绝路径测试都在选号循环之前返回，零值依赖安全；不要写越过 404 门槛的 handler 级测试——`AuthSubject.Concurrency=1` 会触发零值 `ConcurrencyService` 的 nil cache panic，转发链路的行为已由 Task 2/3 的 service 级测试覆盖。）
 
 Run: `cd /Users/astray/api-token/sub2api/backend && go test -tags=unit ./internal/handler/ -run 'TestGeminiImages' -count=1`
 Expected: FAIL（`GeminiImages` 未定义，编译错误）
@@ -763,9 +784,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -915,6 +936,8 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 				)
 			}
 			if len(failedAccountIDs) == 0 {
+				// 注：诊断器对非 grok 平台会归一化到 openai，gemini 分组必然走 503 兜底分支；
+				// 模型有效性已在前面的映射模型门槛处 404，这里语义正确。
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, mappedModel, requestModel, service.PlatformGemini)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -938,7 +961,7 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
 
-		selection := &service.AccountSelectionResult{Account: account}
+		selection := buildGeminiImagesAccountSelection(account, h.cfg)
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if !acquired {
 			return
@@ -1028,6 +1051,32 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 			zap.Int("switch_count", switchCount),
 		)
 		return
+	}
+}
+
+// buildGeminiImagesAccountSelection 为 gemini 选号结果构造带等待计划的 selection。
+// 必须携带 WaitPlan：acquireResponsesAccountSlot 对 Acquired==false 且 WaitPlan==nil
+// 的 selection 会直接返回 503（openai_gateway_handler.go:1181-1188）。
+// 超时/排队参数取调度配置的 fallback 值（与非粘性调度路径一致），nil cfg 用默认。
+func buildGeminiImagesAccountSelection(account *service.Account, cfg *config.Config) *service.AccountSelectionResult {
+	waitTimeout := 30 * time.Second
+	maxWaiting := 100
+	if cfg != nil {
+		if cfg.Gateway.Scheduling.FallbackWaitTimeout > 0 {
+			waitTimeout = cfg.Gateway.Scheduling.FallbackWaitTimeout
+		}
+		if cfg.Gateway.Scheduling.FallbackMaxWaiting > 0 {
+			maxWaiting = cfg.Gateway.Scheduling.FallbackMaxWaiting
+		}
+	}
+	return &service.AccountSelectionResult{
+		Account: account,
+		WaitPlan: &service.AccountWaitPlan{
+			AccountID:      account.ID,
+			MaxConcurrency: account.Concurrency,
+			Timeout:        waitTimeout,
+			MaxWaiting:     maxWaiting,
+		},
 	}
 }
 
@@ -1132,6 +1181,9 @@ func TestGatewayRoutesGeminiImagesPathsAreRegistered(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
+		// 测试路由器用零值 handler（geminiCompatService 为 nil），预期命中
+		// GeminiImages 的 nil 防护返回 500 "Gemini gateway is not configured"——
+		// 关键断言是不再落入 default 分支的 404。
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Gemini images handler", path)
 		require.NotContains(t, w.Body.String(), "Images API is not supported for this platform", "path=%s", path)
 	}
