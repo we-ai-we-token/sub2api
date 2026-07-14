@@ -456,7 +456,7 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 
 func isOpenAIImageGenerationModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
-	return strings.HasPrefix(model, "gpt-image-") || isGrokImageGenerationModel(model)
+	return strings.HasPrefix(model, "gpt-image-") || isGrokImageGenerationModel(model) || IsGeminiImageGenerationModel(model)
 }
 
 func isGrokImageGenerationModel(model string) bool {
