@@ -33,8 +33,10 @@
 
 ```go
 case service.PlatformGemini:
-    h.Gateway.GeminiImages(c)
+    h.OpenAIGateway.GeminiImages(c)
 ```
+
+与 Grok 相同，`GeminiImages` 挂在 `OpenAIGatewayHandler` 上（复用其生图槽/用户槽/审核/计费编排设施）；选号所需的 `GeminiMessagesCompatService` 通过构造函数注入该 handler（wire 接线同步更新）。
 
 `/v1/images/generations|edits` 的全部注册点（含 `/openai` 前缀别名与根路径别名）共用该 lambda，自动生效。
 
@@ -47,7 +49,7 @@ case service.PlatformGemini:
 3. 门槛：`GroupAllowsImageGeneration`；内容审核 `ContentModerationProtocolOpenAIImages`；`stream=true` 返回 400（`invalid_request_error`）。
 4. 分组模型映射 `ResolveChannelMappingAndRestrict` → 校验**映射后**模型匹配 `gemini-*image*`（大小写不敏感，语义与运营报表 `model ILIKE 'gemini-%image%'` 一致），不匹配返回 `model_not_found`。
 5. 并发：生图槽（`acquireImageGenerationSlot` 同款机制）+ 用户槽 + 账号槽，及 ops 上下文埋点，与 OpenAI/Grok 生图一致。
-6. 选号循环：Gemini 平台调度（`SelectAccountForModelWithExclusions` 一族，`backend/internal/service/gemini_messages_compat_service.go:105`），过滤条件：`Platform == gemini && Type == api_key`；失败账号排除、切号上限、池模式同号重试策略对齐 Grok handler。
+6. 选号循环：`GeminiMessagesCompatService` 新增 `SelectGeminiAPIKeyAccountForImages`（内部复用 `listSchedulableAccountsOnce` + `selectBestGeminiAccount`，`backend/internal/service/gemini_messages_compat_service.go`），过滤条件：`Platform == gemini && Type == apikey`，不使用粘性会话；失败账号排除、切号上限、池模式同号重试策略对齐 Grok handler。v1 简化：上游失败仅做本次请求内切号，不做账号级临时停调/健康统计。
 7. 转发成功后异步 `RecordUsage`（见 §4）。
 
 ### 3. Service：透传转发
@@ -62,8 +64,7 @@ case service.PlatformGemini:
 
 ### 4. 计费与报表
 
-- 优先取响应 `usage` 的 token 数记账（gpt-image-1 风格 `input_tokens`/`output_tokens`）。
-- 响应无 `usage` 时退化为按张计费：`CalculateImageCost`（`backend/internal/service/billing_service.go:1371`），张数取 `data[]` 长度，档位由请求 `size` 经 `NormalizeImageBillingTierOrDefault` 归一化。
+- 完全复用现有 OpenAI 生图计费管线（`RecordUsage` → `calculateOpenAIRecordUsageCost`）：`ImageCount > 0` 时默认按张计费（张数取响应 `data[]` 数量、缺省回退请求 `n`；档位由请求 `size` 经 `NormalizeImageBillingTierOrDefault` 归一化），分组/渠道定价配置为 token 模式时自动改按 token 计费；响应 `usage` 的 token 数同步入账用于统计。
 - 记账 platform=gemini、model=映射后模型名。运营生图报表（`backend/internal/repository/operation_image_report_repo.go:27`，`platform='gemini' AND model ILIKE 'gemini-%image%'`）自动覆盖，报表零改动。
 
 ## 错误处理
