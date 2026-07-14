@@ -1,7 +1,7 @@
 # Gemini 分组支持 OpenAI Images 协议（透传模式）设计
 
 - 日期：2026-07-15
-- 状态：已确认（待实现）
+- 状态：已实现（feature/gemini-openai-images）
 - 分支：`feature/gemini-openai-images`（基于 `release` @ 0b89809a 切出；`pre-release` 当前落后于 release，本设计引用的代码锚点以 release 为准，完成后合入 `pre-release` 验证再进 `release`）
 
 ## 背景与目标
