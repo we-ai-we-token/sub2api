@@ -150,6 +150,28 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesGeminiImagesPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGemini)
+
+	for _, path := range []string{
+		"/v1/images/generations",
+		"/v1/images/edits",
+		"/images/generations",
+		"/images/edits",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gemini-2.5-flash-image","prompt":"draw a cat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		// 测试路由器用零值 handler（geminiCompatService 为 nil），预期命中
+		// GeminiImages 的 nil 防护返回 500 "Gemini gateway is not configured"——
+		// 关键断言是不再落入 default 分支的 404。
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Gemini images handler", path)
+		require.NotContains(t, w.Body.String(), "Images API is not supported for this platform", "path=%s", path)
+	}
+}
+
 func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
