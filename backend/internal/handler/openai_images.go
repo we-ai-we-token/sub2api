@@ -83,6 +83,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 	requestModel := parsed.Model
 
+	imageGenRecord := newImageGenerationRecordState(c, apiKey, service.PlatformOpenAI, requestModel, parsed.Stream, requestStart)
+	defer h.finishImageGenerationRecord(c, imageGenRecord)
+
 	reqLog = reqLog.With(
 		zap.String("model", requestModel),
 		zap.Bool("stream", parsed.Stream),
@@ -98,7 +101,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	imageSlotWaitStart := time.Now()
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
+	service.SetOpsLatencyMs(c, service.OpsImageSlotWaitMsKey, time.Since(imageSlotWaitStart).Milliseconds())
 	if !acquired {
 		return
 	}
@@ -121,6 +126,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	routingStart := time.Now()
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, parsed.Stream, &streamStarted, reqLog)
+	service.SetOpsLatencyMs(c, service.OpsUserSlotWaitMsKey, time.Since(routingStart).Milliseconds())
 	if !acquired {
 		return
 	}
@@ -150,6 +156,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	stopJSONKeepalive := func() {}
 	jsonKeepaliveStarted := false
 	defer func() { stopJSONKeepalive() }()
+	defer func() {
+		imageGenRecord.accountSwitches = switchCount
+		for _, n := range sameAccountRetryCount {
+			imageGenRecord.sameAccountRetries += n
+		}
+	}()
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -212,7 +224,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		reqLog.Debug("openai.images.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		accountSlotWaitStart := time.Now()
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
+		service.AddOpsLatencyMs(c, service.OpsAccountSlotWaitMsKey, time.Since(accountSlotWaitStart).Milliseconds())
 		if !acquired {
 			return
 		}
@@ -224,6 +238,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		forwardStart := time.Now()
 		writerSizeBeforeForward := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+		imageGenRecord.noteAttempt(account)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -389,6 +404,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		}
+
+		imageGenRecord.noteSuccess(result)
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)

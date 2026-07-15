@@ -16,4 +16,8 @@ func registerAdminOperationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		op.GET("/request-series", h.Admin.OperationImageReport.RequestSeries)
 		op.GET("/filters", h.Admin.OperationImageReport.Filters)
 	}
+	records := admin.Group("/operation/image-records")
+	{
+		records.GET("", h.Admin.ImageGenerationRecord.List)
+	}
 }
