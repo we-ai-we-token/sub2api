@@ -54,7 +54,9 @@ func TestGeminiImagesRejectsStream(t *testing.T) {
 func TestGeminiImagesRejectsDisabledGroup(t *testing.T) {
 	c, rec := geminiImagesTestContext(t, []byte(`{"model":"gemini-2.5-flash-image","prompt":"draw"}`))
 	apiKeyVal, _ := c.Get(string(middleware2.ContextKeyAPIKey))
-	apiKeyVal.(*service.APIKey).Group.AllowImageGeneration = false
+	apiKey, ok := apiKeyVal.(*service.APIKey)
+	require.True(t, ok)
+	apiKey.Group.AllowImageGeneration = false
 	h := newGeminiImagesTestHandler()
 	h.GeminiImages(c)
 	require.Equal(t, http.StatusForbidden, rec.Code)
