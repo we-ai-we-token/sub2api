@@ -1857,8 +1857,9 @@ func setDefaults() {
 	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
 	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
-	// 生图记录默认保留 90 天（用于耗时趋势对比与瓶颈分析）。
-	viper.SetDefault("ops.cleanup.image_record_retention_days", 90)
+	// 生图记录默认保留 30 天（瓶颈分析看天/周级窗口；日均几十万请求下 90 天索引体积过大，
+	// 长期趋势用生图报表的 usage_logs 聚合）。
+	viper.SetDefault("ops.cleanup.image_record_retention_days", 30)
 	viper.SetDefault("ops.aggregation.enabled", true)
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
