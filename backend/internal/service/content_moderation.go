@@ -1622,6 +1622,11 @@ func (s *ContentModerationService) replaceRuntimeConfig(cfg *ContentModerationCo
 	})
 }
 
+// matchBlockedKeyword 为上游 v0.1.156 的 Aho-Corasick 快路径。本 fork 关键词检查
+// 保留自研实现(keyword_observe + && / re: 组合规则,见自由函数 matchBlockedKeyword),
+// 上游自动机不支持组合规则故暂未接入;保留待后续做"纯子串走自动机"的分流适配。
+//
+//nolint:unused
 func (s *contentModerationRuntimeSnapshot) matchBlockedKeyword(text string) (string, bool) {
 	if s == nil || s.config == nil {
 		return "", false

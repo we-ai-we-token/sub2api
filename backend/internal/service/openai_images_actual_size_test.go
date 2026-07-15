@@ -80,7 +80,9 @@ func runOpenAIOAuthImageActualSizeTest(t *testing.T, stream bool) openAIOAuthIma
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
-	c.Set("api_key", &APIKey{ID: 42})
+	// 上游用例假设走 Responses 生图链路;本 fork 由分组开关路由(真实分组默认 true),
+	// 测试上下文需显式挂上分组,否则落入二开 codex images 端点导致 mock 不匹配。
+	c.Set("api_key", &APIKey{ID: 42, Group: &Group{ImageUseResponsesAPI: true}})
 
 	encoded := encodeOpenAIImageTestPNG(t, 1672, 941)
 	upstreamBody := fmt.Sprintf(
