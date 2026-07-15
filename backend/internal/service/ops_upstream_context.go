@@ -22,6 +22,11 @@ const (
 	OpsUpstreamLatencyMsKey  = "ops_upstream_latency_ms"
 	OpsResponseLatencyMsKey  = "ops_response_latency_ms"
 	OpsTimeToFirstTokenMsKey = "ops_time_to_first_token_ms"
+	// 生图链路的并发槽等待耗时（毫秒），由 images handler 在 acquire 前后计时写入，
+	// 落库到 image_generation_records（区分「上游真慢」与「在网关排队」）。
+	OpsImageSlotWaitMsKey   = "ops_image_slot_wait_ms"
+	OpsUserSlotWaitMsKey    = "ops_user_slot_wait_ms"
+	OpsAccountSlotWaitMsKey = "ops_account_slot_wait_ms"
 	// OpenAI WS 关键观测字段
 	OpsOpenAIWSQueueWaitMsKey = "ops_openai_ws_queue_wait_ms"
 	OpsOpenAIWSConnPickMsKey  = "ops_openai_ws_conn_pick_ms"
@@ -69,6 +74,19 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 		return
 	}
 	c.Set(key, value)
+}
+
+// AddOpsLatencyMs 在已有值上累加（如账号并发槽等待跨多次切号尝试累计）。
+func AddOpsLatencyMs(c *gin.Context, key string, delta int64) {
+	if c == nil || strings.TrimSpace(key) == "" || delta < 0 {
+		return
+	}
+	if v, ok := c.Get(key); ok {
+		if prev, ok := v.(int64); ok && prev > 0 {
+			delta += prev
+		}
+	}
+	c.Set(key, delta)
 }
 
 func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {

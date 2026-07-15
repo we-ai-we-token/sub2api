@@ -39,6 +39,7 @@ type AdminHandlers struct {
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
 	OperationImageReport   *admin.OperationImageReportHandler
+	ImageGenerationRecord  *admin.ImageGenerationRecordHandler
 }
 
 // Handlers contains all HTTP handlers

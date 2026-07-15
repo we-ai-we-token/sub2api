@@ -27,18 +27,19 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	gatewayService           *service.OpenAIGatewayService
-	geminiCompatService      *service.GeminiMessagesCompatService
-	billingCacheService      *service.BillingCacheService
-	apiKeyService            *service.APIKeyService
-	usageRecordWorkerPool    *service.UsageRecordWorkerPool
-	errorPassthroughService  *service.ErrorPassthroughService
-	contentModerationService *service.ContentModerationService
-	opsService               *service.OpsService
-	concurrencyHelper        *ConcurrencyHelper
-	imageLimiter             *imageConcurrencyLimiter
-	maxAccountSwitches       int
-	cfg                      *config.Config
+	gatewayService               *service.OpenAIGatewayService
+	geminiCompatService          *service.GeminiMessagesCompatService
+	billingCacheService          *service.BillingCacheService
+	apiKeyService                *service.APIKeyService
+	usageRecordWorkerPool        *service.UsageRecordWorkerPool
+	errorPassthroughService      *service.ErrorPassthroughService
+	contentModerationService     *service.ContentModerationService
+	opsService                   *service.OpsService
+	imageGenerationRecordService *service.ImageGenerationRecordService
+	concurrencyHelper            *ConcurrencyHelper
+	imageLimiter                 *imageConcurrencyLimiter
+	maxAccountSwitches           int
+	cfg                          *config.Config
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -125,6 +126,7 @@ func NewOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
+	imageGenerationRecordService *service.ImageGenerationRecordService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
@@ -136,18 +138,19 @@ func NewOpenAIGatewayHandler(
 		}
 	}
 	return &OpenAIGatewayHandler{
-		gatewayService:           gatewayService,
-		geminiCompatService:      geminiCompatService,
-		billingCacheService:      billingCacheService,
-		apiKeyService:            apiKeyService,
-		usageRecordWorkerPool:    usageRecordWorkerPool,
-		errorPassthroughService:  errorPassthroughService,
-		contentModerationService: contentModerationService,
-		opsService:               opsService,
-		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		imageLimiter:             &imageConcurrencyLimiter{},
-		maxAccountSwitches:       maxAccountSwitches,
-		cfg:                      cfg,
+		gatewayService:               gatewayService,
+		geminiCompatService:          geminiCompatService,
+		billingCacheService:          billingCacheService,
+		apiKeyService:                apiKeyService,
+		usageRecordWorkerPool:        usageRecordWorkerPool,
+		errorPassthroughService:      errorPassthroughService,
+		contentModerationService:     contentModerationService,
+		opsService:                   opsService,
+		imageGenerationRecordService: imageGenerationRecordService,
+		concurrencyHelper:            NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		imageLimiter:                 &imageConcurrencyLimiter{},
+		maxAccountSwitches:           maxAccountSwitches,
+		cfg:                          cfg,
 	}
 }
 

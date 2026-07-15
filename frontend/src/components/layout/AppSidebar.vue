@@ -823,7 +823,8 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       children: [
-        { path: '/admin/operation/image-report', label: t('nav.imageReport'), icon: ChartIcon }
+        { path: '/admin/operation/image-report', label: t('nav.imageReport'), icon: ChartIcon },
+        { path: '/admin/operation/image-records', label: t('nav.imageRecords'), icon: ChartIcon }
       ]
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }

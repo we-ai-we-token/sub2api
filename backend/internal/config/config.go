@@ -1292,6 +1292,8 @@ type OpsCleanupConfig struct {
 	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
 	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
+	// ImageRecordRetentionDays 生图记录（image_generation_records）保留天数。
+	ImageRecordRetentionDays int `mapstructure:"image_record_retention_days"`
 }
 
 type OpsAggregationConfig struct {
@@ -1855,6 +1857,9 @@ func setDefaults() {
 	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
 	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
+	// 生图记录默认保留 30 天（瓶颈分析看天/周级窗口；日均几十万请求下 90 天索引体积过大，
+	// 长期趋势用生图报表的 usage_logs 聚合）。
+	viper.SetDefault("ops.cleanup.image_record_retention_days", 30)
 	viper.SetDefault("ops.aggregation.enabled", true)
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
@@ -3019,6 +3024,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Ops.Cleanup.HourlyMetricsRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.hourly_metrics_retention_days must be non-negative")
+	}
+	if c.Ops.Cleanup.ImageRecordRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.image_record_retention_days must be non-negative")
 	}
 	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
 		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")

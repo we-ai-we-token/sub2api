@@ -83,6 +83,9 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 		zap.Bool("multipart", parsed.Multipart),
 	)
 
+	imageGenRecord := newImageGenerationRecordState(c, apiKey, service.PlatformGemini, requestModel, false, requestStart)
+	defer h.finishImageGenerationRecord(c, imageGenRecord)
+
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
@@ -91,7 +94,9 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	imageSlotWaitStart := time.Now()
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
+	service.SetOpsLatencyMs(c, service.OpsImageSlotWaitMsKey, time.Since(imageSlotWaitStart).Milliseconds())
 	if !acquired {
 		return
 	}
@@ -120,6 +125,7 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 	routingStart := time.Now()
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, false, &streamStarted, reqLog)
+	service.SetOpsLatencyMs(c, service.OpsUserSlotWaitMsKey, time.Since(routingStart).Milliseconds())
 	if !acquired {
 		return
 	}
@@ -147,6 +153,12 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	defer func() {
+		imageGenRecord.accountSwitches = switchCount
+		for _, n := range sameAccountRetryCount {
+			imageGenRecord.sameAccountRetries += n
+		}
+	}()
 
 	for {
 		account, err := h.geminiCompatService.SelectGeminiAPIKeyAccountForImages(requestCtx, apiKey.GroupID, mappedModel, failedAccountIDs)
@@ -184,10 +196,13 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 		writerSizeBeforeForward := c.Writer.Size()
 
 		selection := buildGeminiImagesAccountSelection(account, h.cfg)
+		accountSlotWaitStart := time.Now()
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
+		service.AddOpsLatencyMs(c, service.OpsAccountSlotWaitMsKey, time.Since(accountSlotWaitStart).Milliseconds())
 		if !acquired {
 			return
 		}
+		imageGenRecord.noteAttempt(account)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -267,6 +282,7 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 			return
 		}
 
+		imageGenRecord.noteSuccess(result)
 		recordGeminiImagesUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, parsed, channelMapping)
 		reqLog.Debug("gemini_images.request_completed",
 			zap.Int64("account_id", account.ID),

@@ -193,6 +193,7 @@ export default {
     riskControl: 'Risk Control',
     operations: 'Operations',
     imageReport: 'Image Report',
+    imageRecords: 'Image Records',
   },
 
   // Auth

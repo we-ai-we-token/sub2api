@@ -193,6 +193,7 @@ export default {
     riskControl: '风控中心',
     operations: '运营管理',
     imageReport: '生图报表',
+    imageRecords: '生图记录',
   },
 
   // Auth
