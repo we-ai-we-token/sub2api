@@ -322,10 +322,36 @@ func filterVerifiedEmails(entries []NotifyEmailEntry) []string {
 	return recipients
 }
 
-// collectBalanceNotifyRecipients returns verified, non-disabled email recipients.
-// Only emails with verified=true and disabled=false are included.
+// collectBalanceNotifyRecipients returns the recipient list for balance low alerts.
+//
+// The user's primary email (user.Email) is always included unconditionally, without
+// requiring a verification step: this platform is invitation-only and registers users
+// directly with their real email, so no email-verification flow exists. Requiring
+// verified=true here would leave every user with an empty recipient list and silently
+// drop all alerts. Delivery may fail for a bad address, but that is preferable to never
+// attempting delivery at all.
+//
+// Verified, non-disabled extra emails are appended on top. Recipients are
+// case-insensitively deduplicated, with the primary email kept first.
 func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []string {
-	return filterVerifiedEmails(user.BalanceNotifyExtraEmails)
+	var recipients []string
+	seen := make(map[string]bool)
+
+	if primary := strings.TrimSpace(user.Email); primary != "" {
+		recipients = append(recipients, primary)
+		seen[strings.ToLower(primary)] = true
+	}
+
+	for _, email := range filterVerifiedEmails(user.BalanceNotifyExtraEmails) {
+		lower := strings.ToLower(email)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		recipients = append(recipients, email)
+	}
+
+	return recipients
 }
 
 // sendEmails sends an email to all recipients with shared timeout and error logging.

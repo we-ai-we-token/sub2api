@@ -402,3 +402,82 @@ func TestCheckQuotaDimCrossings_MultipleDims_MixedResults(t *testing.T) {
 	// None should trigger. No panic expected.
 	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
+
+// ---------- collectBalanceNotifyRecipients ----------
+
+func TestCollectBalanceNotifyRecipients_PrimaryOnly(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	// No extra emails: primary email must still be included unconditionally,
+	// even though no email-verification flow exists on this platform.
+	u := &User{ID: 1, Email: "user@example.com"}
+	require.Equal(t, []string{"user@example.com"}, s.collectBalanceNotifyRecipients(u))
+}
+
+func TestCollectBalanceNotifyRecipients_PrimaryPlusVerifiedExtra(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	u := &User{
+		ID:    1,
+		Email: "user@example.com",
+		BalanceNotifyExtraEmails: []NotifyEmailEntry{
+			{Email: "extra@example.com", Verified: true, Disabled: false},
+		},
+	}
+	require.Equal(t,
+		[]string{"user@example.com", "extra@example.com"},
+		s.collectBalanceNotifyRecipients(u),
+	)
+}
+
+func TestCollectBalanceNotifyRecipients_SkipsDisabledAndUnverifiedExtra(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	u := &User{
+		ID:    1,
+		Email: "user@example.com",
+		BalanceNotifyExtraEmails: []NotifyEmailEntry{
+			{Email: "disabled@example.com", Verified: true, Disabled: true},
+			{Email: "unverified@example.com", Verified: false, Disabled: false},
+			{Email: "good@example.com", Verified: true, Disabled: false},
+		},
+	}
+	// Only the verified, non-disabled extra survives; primary stays first.
+	require.Equal(t,
+		[]string{"user@example.com", "good@example.com"},
+		s.collectBalanceNotifyRecipients(u),
+	)
+}
+
+func TestCollectBalanceNotifyRecipients_DedupPrimaryCaseInsensitive(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	u := &User{
+		ID:    1,
+		Email: "User@Example.com",
+		BalanceNotifyExtraEmails: []NotifyEmailEntry{
+			// Same address as primary, different case → must be deduplicated.
+			{Email: "user@example.com", Verified: true, Disabled: false},
+			{Email: "extra@example.com", Verified: true, Disabled: false},
+		},
+	}
+	require.Equal(t,
+		[]string{"User@Example.com", "extra@example.com"},
+		s.collectBalanceNotifyRecipients(u),
+	)
+}
+
+func TestCollectBalanceNotifyRecipients_EmptyPrimaryFallsBackToExtra(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	// A user with no primary email (edge case) still gets verified extras.
+	u := &User{
+		ID:    1,
+		Email: "",
+		BalanceNotifyExtraEmails: []NotifyEmailEntry{
+			{Email: "extra@example.com", Verified: true, Disabled: false},
+		},
+	}
+	require.Equal(t, []string{"extra@example.com"}, s.collectBalanceNotifyRecipients(u))
+}
+
+func TestCollectBalanceNotifyRecipients_NoRecipients(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	u := &User{ID: 1, Email: ""}
+	require.Empty(t, s.collectBalanceNotifyRecipients(u))
+}
