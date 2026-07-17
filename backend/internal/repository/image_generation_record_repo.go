@@ -225,19 +225,19 @@ func scanImageGenerationRecord(rows *sql.Rows) (*service.ImageGenerationRecord, 
 	}
 	rec.RequestID = requestID.String
 	rec.ClientRequestID = clientRequestID.String
-	rec.UserID = nullInt64Ptr(userID)
-	rec.APIKeyID = nullInt64Ptr(apiKeyID)
-	rec.AccountID = nullInt64Ptr(accountID)
-	rec.GroupID = nullInt64Ptr(groupID)
+	rec.UserID = nullInt64PtrFromSQL(userID)
+	rec.APIKeyID = nullInt64PtrFromSQL(apiKeyID)
+	rec.AccountID = nullInt64PtrFromSQL(accountID)
+	rec.GroupID = nullInt64PtrFromSQL(groupID)
 	rec.UpstreamModel = upstreamModel.String
-	rec.AuthMs = nullInt64Ptr(authMs)
-	rec.RoutingMs = nullInt64Ptr(routingMs)
-	rec.ImageSlotWaitMs = nullInt64Ptr(imageSlotWaitMs)
-	rec.UserSlotWaitMs = nullInt64Ptr(userSlotWaitMs)
-	rec.AccountSlotWaitMs = nullInt64Ptr(accountSlotWaitMs)
-	rec.UpstreamMs = nullInt64Ptr(upstreamMs)
-	rec.ResponseMs = nullInt64Ptr(responseMs)
-	rec.FirstTokenMs = nullInt64Ptr(firstTokenMs)
+	rec.AuthMs = nullInt64PtrFromSQL(authMs)
+	rec.RoutingMs = nullInt64PtrFromSQL(routingMs)
+	rec.ImageSlotWaitMs = nullInt64PtrFromSQL(imageSlotWaitMs)
+	rec.UserSlotWaitMs = nullInt64PtrFromSQL(userSlotWaitMs)
+	rec.AccountSlotWaitMs = nullInt64PtrFromSQL(accountSlotWaitMs)
+	rec.UpstreamMs = nullInt64PtrFromSQL(upstreamMs)
+	rec.ResponseMs = nullInt64PtrFromSQL(responseMs)
+	rec.FirstTokenMs = nullInt64PtrFromSQL(firstTokenMs)
 	if len(attemptsDetail) > 0 {
 		rec.AttemptsDetail = append([]byte(nil), attemptsDetail...)
 	}
@@ -256,7 +256,7 @@ func scanImageGenerationRecord(rows *sql.Rows) (*service.ImageGenerationRecord, 
 	return &rec, nil
 }
 
-func nullInt64Ptr(v sql.NullInt64) *int64 {
+func nullInt64PtrFromSQL(v sql.NullInt64) *int64 {
 	if !v.Valid {
 		return nil
 	}
