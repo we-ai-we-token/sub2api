@@ -23,6 +23,13 @@ ARG NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
 
+# Raise Node heap limit for the build. After merging v0.1.160 the frontend grew
+# (upstream security-audit/prompt-audit pages + local operation/image pages) and
+# `vue-tsc -b && vite build` OOMs at V8's default ~1.5GB old-space limit inside the
+# container (JS heap out of memory, exit 134). CI passes because the GitHub runner
+# runs Node with more headroom; the image build needs this explicit bump.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 # Install pnpm (pinned to v9 to match CI and keep builds reproducible)
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
