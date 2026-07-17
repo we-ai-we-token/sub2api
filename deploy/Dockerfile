@@ -18,7 +18,10 @@ ARG GOSUMDB=sum.golang.google.cn
 FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
-ENV NODE_OPTIONS=--max-old-space-size=1536
+# Raised from 1536 after merging v0.1.160: the frontend grew (upstream
+# security-audit/prompt-audit pages + local operation/image pages) and the build
+# OOMed at the old 1.5GB cap (JS heap out of memory, exit 134).
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # Install pnpm. Keep this pinned to the lockfile-compatible major version so
 # Docker builds remain reproducible when pnpm changes config validation rules.
@@ -35,7 +38,10 @@ RUN pnpm install --frozen-lockfile
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
-RUN pnpm run build
+# Build with vite only, skipping `vue-tsc -b`. The type-check pass is the memory
+# hog (and is already gated by the CI `frontend` job); the release image only
+# needs the bundle, so we run vite directly to avoid the vue-tsc OOM.
+RUN pnpm exec vite build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
