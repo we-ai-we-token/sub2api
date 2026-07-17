@@ -23,13 +23,6 @@ ARG NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
 
-# Raise Node heap limit for the build. After merging v0.1.160 the frontend grew
-# (upstream security-audit/prompt-audit pages + local operation/image pages) and
-# `vue-tsc -b && vite build` OOMs at V8's default ~1.5GB old-space limit inside the
-# container (JS heap out of memory, exit 134). CI passes because the GitHub runner
-# runs Node with more headroom; the image build needs this explicit bump.
-ENV NODE_OPTIONS=--max-old-space-size=4096
-
 # Install pnpm (pinned to v9 to match CI and keep builds reproducible)
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
@@ -46,7 +39,14 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
-RUN pnpm run build
+# Build with vite only, skipping `vue-tsc -b`. After merging v0.1.160 the frontend
+# grew (upstream security-audit/prompt-audit pages + local operation/image pages)
+# and the type-check pass OOMs at V8's default ~1.5GB old-space limit inside the
+# container (JS heap out of memory, exit 134); an ENV NODE_OPTIONS bump did not
+# reach the vue-tsc process. Type-checking is already gated by the CI `frontend`
+# job (vue-tsc -b), so the release image only needs the bundle. NODE_OPTIONS is
+# still set inline as headroom for vite/rollup on this larger tree.
+RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm exec vite build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
