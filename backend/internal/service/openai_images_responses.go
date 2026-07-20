@@ -917,7 +917,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: false,
 		}
 	}
 
@@ -1866,11 +1866,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 					Kind:               "failover",
 					Message:            upstreamMsg,
 				})
-				s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
+				shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
-					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+					RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 				}
 			}
 			// Retryable upstream errors that are NOT failover-class (e.g. a non-failover
@@ -2006,11 +2006,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 					Kind:               "failover",
 					Message:            upstreamMsg,
 				})
-				s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
+				shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
-					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+					RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 				}
 			}
 			// Retryable upstream errors that are NOT failover-class (e.g. a non-failover
