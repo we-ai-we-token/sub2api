@@ -87,8 +87,8 @@ func TestDeductSynthInstructionsFromUsage_NoOp(t *testing.T) {
 // 且与 isDefaultCodexSynthInstructions 判定一致。
 func TestCountOpenAISynthInstructionsTokens(t *testing.T) {
 	models := []struct {
-		model   string
-		minTok  int
+		model  string
+		minTok int
 	}{
 		{"gpt-5.5", 3000},
 		{"gpt-5.2", 3000},

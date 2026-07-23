@@ -124,7 +124,7 @@ func deductSynthInstructionsFromChatUsage(u *apicompat.ChatUsage, n int) {
 }
 
 // openAISynthUsageCachedTokenPaths 覆盖 usage 里 cached token 的所有别名键
-//（Responses / Chat Completions / Anthropic 兼容三种形态），用于改写客户端响应。
+// （Responses / Chat Completions / Anthropic 兼容三种形态），用于改写客户端响应。
 // 与 openAICacheReadTokensFromUsage 的读取优先级保持一致。
 var openAISynthUsageCachedTokenPaths = []string{
 	"input_tokens_details.cached_tokens",
@@ -155,9 +155,8 @@ func hideSynthCacheInUsageObject(data []byte, prefix string, n int) []byte {
 		}
 		return prefix + "." + field
 	}
-	// cached：按别名依次扣减，累计已扣量用于 input 端对齐。
+	// cached：按别名依次扣减。
 	remaining := n
-	cacheDeducted := 0
 	for _, field := range openAISynthUsageCachedTokenPaths {
 		if remaining <= 0 {
 			break
@@ -175,7 +174,6 @@ func hideSynthCacheInUsageObject(data []byte, prefix string, n int) []byte {
 		if updated, err := sjson.SetBytes(out, path, cur-d); err == nil {
 			out = updated
 			remaining -= d
-			cacheDeducted += d
 		}
 	}
 	// input/prompt：扣减 min(N, cur)，与 cached 扣减量共同保证 actualInput 口径正确。
