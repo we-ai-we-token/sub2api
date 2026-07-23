@@ -101,8 +101,6 @@ type UsageLog struct {
 	ImageOutputSize *string `json:"image_output_size,omitempty"`
 	// ImageSizeSource holds the value of the "image_size_source" field.
 	ImageSizeSource *string `json:"image_size_source,omitempty"`
-	// ImageQuality holds the value of the "image_quality" field.
-	ImageQuality *string `json:"image_quality,omitempty"`
 	// ImageSizeBreakdown holds the value of the "image_size_breakdown" field.
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown,omitempty"`
 	// 视频生成数量；>0 表示本行是视频生成用量
@@ -206,7 +204,7 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldImageQuality, usagelog.FieldVideoResolution:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -482,13 +480,6 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				_m.ImageSizeSource = new(string)
 				*_m.ImageSizeSource = value.String
 			}
-		case usagelog.FieldImageQuality:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field image_quality", values[i])
-			} else if value.Valid {
-				_m.ImageQuality = new(string)
-				*_m.ImageQuality = value.String
-			}
 		case usagelog.FieldImageSizeBreakdown:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field image_size_breakdown", values[i])
@@ -738,11 +729,6 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	if v := _m.ImageSizeSource; v != nil {
 		builder.WriteString("image_size_source=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.ImageQuality; v != nil {
-		builder.WriteString("image_quality=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

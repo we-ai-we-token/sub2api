@@ -533,20 +533,6 @@ func (_c *UsageLogCreate) SetNillableImageSizeSource(v *string) *UsageLogCreate 
 	return _c
 }
 
-// SetImageQuality sets the "image_quality" field.
-func (_c *UsageLogCreate) SetImageQuality(v string) *UsageLogCreate {
-	_c.mutation.SetImageQuality(v)
-	return _c
-}
-
-// SetNillableImageQuality sets the "image_quality" field if the given value is not nil.
-func (_c *UsageLogCreate) SetNillableImageQuality(v *string) *UsageLogCreate {
-	if v != nil {
-		_c.SetImageQuality(*v)
-	}
-	return _c
-}
-
 // SetImageSizeBreakdown sets the "image_size_breakdown" field.
 func (_c *UsageLogCreate) SetImageSizeBreakdown(v map[string]int) *UsageLogCreate {
 	_c.mutation.SetImageSizeBreakdown(v)
@@ -898,11 +884,6 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
 		}
 	}
-	if v, ok := _c.mutation.ImageQuality(); ok {
-		if err := usagelog.ImageQualityValidator(v); err != nil {
-			return &ValidationError{Name: "image_quality", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_quality": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.VideoCount(); !ok {
 		return &ValidationError{Name: "video_count", err: errors.New(`ent: missing required field "UsageLog.video_count"`)}
 	}
@@ -1088,10 +1069,6 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageSizeSource(); ok {
 		_spec.SetField(usagelog.FieldImageSizeSource, field.TypeString, value)
 		_node.ImageSizeSource = &value
-	}
-	if value, ok := _c.mutation.ImageQuality(); ok {
-		_spec.SetField(usagelog.FieldImageQuality, field.TypeString, value)
-		_node.ImageQuality = &value
 	}
 	if value, ok := _c.mutation.ImageSizeBreakdown(); ok {
 		_spec.SetField(usagelog.FieldImageSizeBreakdown, field.TypeJSON, value)
@@ -1935,24 +1912,6 @@ func (u *UsageLogUpsert) UpdateImageSizeSource() *UsageLogUpsert {
 // ClearImageSizeSource clears the value of the "image_size_source" field.
 func (u *UsageLogUpsert) ClearImageSizeSource() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldImageSizeSource)
-	return u
-}
-
-// SetImageQuality sets the "image_quality" field.
-func (u *UsageLogUpsert) SetImageQuality(v string) *UsageLogUpsert {
-	u.Set(usagelog.FieldImageQuality, v)
-	return u
-}
-
-// UpdateImageQuality sets the "image_quality" field to the value that was provided on create.
-func (u *UsageLogUpsert) UpdateImageQuality() *UsageLogUpsert {
-	u.SetExcluded(usagelog.FieldImageQuality)
-	return u
-}
-
-// ClearImageQuality clears the value of the "image_quality" field.
-func (u *UsageLogUpsert) ClearImageQuality() *UsageLogUpsert {
-	u.SetNull(usagelog.FieldImageQuality)
 	return u
 }
 
@@ -2886,27 +2845,6 @@ func (u *UsageLogUpsertOne) UpdateImageSizeSource() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearImageSizeSource() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSizeSource()
-	})
-}
-
-// SetImageQuality sets the "image_quality" field.
-func (u *UsageLogUpsertOne) SetImageQuality(v string) *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.SetImageQuality(v)
-	})
-}
-
-// UpdateImageQuality sets the "image_quality" field to the value that was provided on create.
-func (u *UsageLogUpsertOne) UpdateImageQuality() *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.UpdateImageQuality()
-	})
-}
-
-// ClearImageQuality clears the value of the "image_quality" field.
-func (u *UsageLogUpsertOne) ClearImageQuality() *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.ClearImageQuality()
 	})
 }
 
@@ -4021,27 +3959,6 @@ func (u *UsageLogUpsertBulk) UpdateImageSizeSource() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearImageSizeSource() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSizeSource()
-	})
-}
-
-// SetImageQuality sets the "image_quality" field.
-func (u *UsageLogUpsertBulk) SetImageQuality(v string) *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.SetImageQuality(v)
-	})
-}
-
-// UpdateImageQuality sets the "image_quality" field to the value that was provided on create.
-func (u *UsageLogUpsertBulk) UpdateImageQuality() *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.UpdateImageQuality()
-	})
-}
-
-// ClearImageQuality clears the value of the "image_quality" field.
-func (u *UsageLogUpsertBulk) ClearImageQuality() *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.ClearImageQuality()
 	})
 }
 
