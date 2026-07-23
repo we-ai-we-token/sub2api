@@ -246,6 +246,18 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	responsesBody = updatedBody
 
+	// 隐藏/扣减自动注入的 Codex instructions 缓存 token：chat 请求本无 top-level instructions，
+	// 若转换后最终 instructions 恰为我方默认合成 base prompt（responses-shape 等场景才会注入），
+	// 记录其 token 数供 RecordUsage 扣减与客户端响应改写；等于客户端 system 提升内容时不匹配、不扣。
+	if s.settingService != nil && s.settingService.IsOpenAISynthCacheHidden(ctx) {
+		finalInstr := gjson.GetBytes(responsesBody, "instructions").String()
+		if isDefaultCodexSynthInstructions(finalInstr, upstreamModel, originalModel) {
+			if n := countOpenAISynthInstructionsTokens(upstreamModel, finalInstr); n > 0 {
+				setOpenAISynthInstructionsTokens(c, n)
+			}
+		}
+	}
+
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -466,6 +478,12 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
+	// 隐藏注入 instructions 缓存：改写写给客户端的 chatResp.usage；计费用的 usage 独立（result.Usage
+	// 经 RecordUsage 扣减），此处不影响它，避免双扣。
+	if n := openAISynthInstructionsTokensFromContext(c); n > 0 {
+		deductSynthInstructionsFromChatUsage(chatResp.Usage, n)
+	}
+
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
@@ -477,13 +495,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:               requestID,
+		Usage:                   usage,
+		Model:                   originalModel,
+		BillingModel:            billingModel,
+		UpstreamModel:           upstreamModel,
+		Stream:                  false,
+		Duration:                time.Since(startTime),
+		SynthInstructionsTokens: openAISynthInstructionsTokensFromContext(c),
 	}, nil
 }
 
@@ -536,14 +555,15 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:               requestID,
+			Usage:                   usage,
+			Model:                   originalModel,
+			BillingModel:            billingModel,
+			UpstreamModel:           upstreamModel,
+			Stream:                  true,
+			Duration:                time.Since(startTime),
+			FirstTokenMs:            firstTokenMs,
+			SynthInstructionsTokens: openAISynthInstructionsTokensFromContext(c),
 		}
 	}
 
@@ -651,6 +671,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				// 隐藏注入 instructions 缓存：改写写给客户端的 usage chunk；计费用 usage 独立
+				// （result.Usage 经 RecordUsage 扣减），此处不影响，避免双扣。
+				if n := openAISynthInstructionsTokensFromContext(c); n > 0 && chunk.Usage != nil {
+					deductSynthInstructionsFromChatUsage(chunk.Usage, n)
+				}
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {

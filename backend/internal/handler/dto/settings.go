@@ -284,6 +284,9 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// 隐藏/扣减自动注入的 Codex instructions 产生的缓存 token（管理员开关，默认关闭）
+	OpenAISynthCacheHidden bool `json:"openai_synth_cache_hidden_enabled"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

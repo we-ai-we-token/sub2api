@@ -30,6 +30,14 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        synthCacheHidden: {
+          title: 'Hide Injected Prompt Cache',
+          description:
+            'OpenAI text models: when the client sends no instructions, the gateway auto-injects the full Codex system prompt. Once cached upstream, that makes a bare "hi"/probe show thousands of cached tokens. When enabled, the injected prompt tokens are deducted from billing, usage reports and the usage returned to the client. Disabled by default.',
+          enabled: 'Enable Hide Injected Prompt Cache',
+          enabledHint:
+            'Only the prompt we injected is deducted; the client\'s own cached content is unaffected. The upstream request is unchanged, so there is no account-ban risk.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

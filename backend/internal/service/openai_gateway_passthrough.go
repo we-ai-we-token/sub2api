@@ -1141,6 +1141,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+
+			// 隐藏注入 instructions 缓存：改写写给客户端的终态事件 line（含缓冲后延迟写出的情形），
+			// 不影响上面已用原始 dataBytes 完成的计费解析；扣减唯一发生在 RecordUsage，避免双扣。
+			if n := openAISynthInstructionsTokensFromContext(c); n > 0 && isOpenAIResponsesTerminalUsageEvent(eventType) {
+				line = hideSynthCacheInSSELine(line, n)
+			}
 		}
 
 		if !clientDisconnected {

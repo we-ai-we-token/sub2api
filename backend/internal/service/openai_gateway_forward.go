@@ -491,6 +491,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			requestView = newOpenAIRequestView(body)
 		}
 	}
+
+	// 隐藏/扣减自动注入的 Codex instructions 缓存 token：此处 body 已是发往上游的最终形态。
+	// 仅当开关开启、客户端原本未提供 top-level instructions、且最终 instructions 恰好等于我方
+	// 默认合成的 Codex base 提示词时，才认定为"我方整份注入"（即 hi/探活场景），按其精确 token
+	// 数 N 记入 context 供 RecordUsage 扣减与客户端响应改写。用相等判定而非"非空"，可避免把客户端
+	// 经 system→instructions 提升的自有内容误当成注入而错误扣减。
+	var synthInstructionsTokens int
+	if instructionsEmpty && !compatMessagesBridge && s.settingService != nil &&
+		s.settingService.IsOpenAISynthCacheHidden(ctx) {
+		finalInstr := gjson.GetBytes(body, "instructions").String()
+		if isDefaultCodexSynthInstructions(finalInstr, upstreamModel, reqModel) {
+			if n := countOpenAISynthInstructionsTokens(upstreamModel, finalInstr); n > 0 {
+				synthInstructionsTokens = n
+				setOpenAISynthInstructionsTokens(c, n)
+			}
+		}
+	}
+
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
@@ -727,6 +745,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsAttempts,
 			)
 			wsResult.UpstreamModel = upstreamModel
+			wsResult.SynthInstructionsTokens = synthInstructionsTokens
 			if wsResult.BillingModel == "" {
 				wsResult.BillingModel = billingModel
 			}
@@ -947,6 +966,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
+
+			SynthInstructionsTokens: synthInstructionsTokens,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

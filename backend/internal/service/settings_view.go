@@ -184,6 +184,9 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Hide/deduct auto-injected Codex instructions cache tokens (admin-only, opt-in)
+	OpenAISynthCacheHidden bool `json:"openai_synth_cache_hidden_enabled"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string

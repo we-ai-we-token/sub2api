@@ -380,6 +380,13 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyOpenAISynthCacheHidden is a DB-backed soft switch (opt-in, default false).
+	// When true, the cache/input tokens contributed by the Codex base instructions that the
+	// gateway auto-injects (only when the client sent no instructions) are deducted from both
+	// billing/usage records and the usage echoed back in the client response, so a bare
+	// "hi"/probe no longer shows thousands of "our" cached tokens.
+	SettingKeyOpenAISynthCacheHidden = "openai_synth_cache_hidden_enabled"
+
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"

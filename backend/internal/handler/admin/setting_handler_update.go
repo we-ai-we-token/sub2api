@@ -308,6 +308,9 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// Hide/deduct auto-injected Codex instructions cache tokens (admin-only)
+	OpenAISynthCacheHidden *bool `json:"openai_synth_cache_hidden_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -1603,6 +1606,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		OpenAISynthCacheHidden: func() bool {
+			if req.OpenAISynthCacheHidden != nil {
+				return *req.OpenAISynthCacheHidden
+			}
+			return previousSettings.OpenAISynthCacheHidden
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1990,6 +1999,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		OpenAISynthCacheHidden:   updatedSettings.OpenAISynthCacheHidden,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

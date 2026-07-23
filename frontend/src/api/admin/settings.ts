@@ -654,6 +654,9 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
+  // 隐藏/扣减自动注入的 Codex instructions 缓存 token
+  openai_synth_cache_hidden_enabled: boolean;
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -922,6 +925,9 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+
+  // 隐藏/扣减自动注入的 Codex instructions 缓存 token
+  openai_synth_cache_hidden_enabled?: boolean;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

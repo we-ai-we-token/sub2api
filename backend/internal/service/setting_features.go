@@ -77,6 +77,20 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsOpenAISynthCacheHidden 检查是否启用"隐藏/扣减自动注入 Codex instructions 缓存 token"开关。
+// 开启后，网关在客户端未提供 instructions 而自动注入 Codex base 提示词时，会把该提示词贡献的
+// input/cache token 从计费、用量记录及回传给客户端的响应 usage 中扣除。默认关闭（opt-in）。
+func (s *SettingService) IsOpenAISynthCacheHidden(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAISynthCacheHidden)
+	if err != nil {
+		return false // 默认关闭
+	}
+	return value == "true"
+}
+
 // IsAffiliateAdminRechargeEnabled reports whether admin balance
 // deposits should participate in the affiliate rebate program.
 func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {

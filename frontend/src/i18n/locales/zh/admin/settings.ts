@@ -30,6 +30,14 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        synthCacheHidden: {
+          title: '隐藏注入提示词缓存',
+          description:
+            'OpenAI 文本模型：当客户端未提供 instructions 时，网关会自动注入整份 Codex 系统提示词，其被上游缓存后会让 hi/探活等请求显示大量缓存 token。开启后从计费、用量报表及返回给客户端的响应中扣除这部分注入提示词的 token。默认关闭。',
+          enabled: '启用隐藏注入提示词缓存',
+          enabledHint:
+            '仅扣除我方注入的提示词部分，不影响客户端自有内容的缓存；上游请求不变，无封号风险。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',

@@ -507,6 +507,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				eventStartsClientOutput = eventStartsClientOutput || startsClientOutput
 			}
 
+			// 隐藏注入 instructions 缓存：仅对写给客户端的终态事件独立改写 usage（作用于已完成全部
+			// 客户端转换的 line 字符串），绝不修改 dataBytes —— 下方 parseSSEUsageBytes 计费仍读原始
+			// dataBytes，扣减唯一发生在 RecordUsage，避免双扣。
+			clientLine := line
+			if n := openAISynthInstructionsTokensFromContext(c); n > 0 && isOpenAIResponsesTerminalUsageEvent(eventType) {
+				clientLine = hideSynthCacheInSSELine(line, n)
+			}
+
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
 				shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
@@ -515,7 +523,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					shouldFlush = true
 				}
 				eventShouldFlush = eventShouldFlush || shouldFlush
-				if _, err := writePendingString(line); err != nil {
+				if _, err := writePendingString(clientLine); err != nil {
 					handlePendingWriteError(err)
 				} else if _, err := writePendingString("\n"); err != nil {
 					handlePendingWriteError(err)
@@ -1130,6 +1138,13 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 	}
+
+	// 隐藏注入 instructions 缓存：仅改写写给客户端的 body.usage；上面 usage 已在 :1124 提取用于
+	// 计费，此处改写不影响它，扣减唯一发生在 RecordUsage，避免双扣。非流式 Responses 的 usage 在顶层。
+	if n := openAISynthInstructionsTokensFromContext(c); n > 0 {
+		body = hideSynthCacheInUsageObject(body, "usage", n)
+	}
+
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := "application/json"
@@ -1218,6 +1233,12 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		body = []byte(bodyText)
+	}
+
+	// 隐藏注入 instructions 缓存：仅改写写给客户端的 body。ok 分支为标准 JSON（usage 在顶层），
+	// 上面 :1197 已提取 usage 用于计费，此处改写不影响；扣减唯一发生在 RecordUsage，避免双扣。
+	if n := openAISynthInstructionsTokensFromContext(c); n > 0 && ok {
+		body = hideSynthCacheInUsageObject(body, "usage", n)
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

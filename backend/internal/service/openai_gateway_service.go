@@ -262,6 +262,12 @@ type OpenAIForwardResult struct {
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int
 
+	// SynthInstructionsTokens 是网关在客户端未提供 instructions 时自动注入的 Codex base
+	// 提示词的 token 数。仅当 openai_synth_cache_hidden_enabled 开关开启、且确实发生注入时 >0。
+	// >0 即隐含"开关开启"，RecordUsage 据此从 input/cache token 中扣减该部分，避免客户端为
+	// 我方注入的提示词付费 / 看到虚高缓存。
+	SynthInstructionsTokens int
+
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
 }

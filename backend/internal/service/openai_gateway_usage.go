@@ -131,6 +131,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ApplyOpenAIImageBillingResolution(result)
 	}
 
+	// 隐藏/扣减自动注入的 Codex instructions 缓存 token（唯一扣减真相源）：
+	// SynthInstructionsTokens>0 表示开关开启且本次注入了整份 base prompt，将该部分从 input/cache
+	// 桶中扣除，使计费与用量记录只反映客户端自身内容（客户端响应侧另在写出点独立改写，见 D）。
+	if result.SynthInstructionsTokens > 0 {
+		deductSynthInstructionsFromUsage(&result.Usage, result.SynthInstructionsTokens)
+	}
+
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
 	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens - result.Usage.CacheCreationInputTokens
