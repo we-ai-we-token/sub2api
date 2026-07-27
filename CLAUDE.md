@@ -10,27 +10,30 @@
 
 This repository is a fork of the upstream `Wei-Shaw/sub2api` project.
 
-Use this branch strategy:
+Branches:
 
 - `main` tracks the upstream project only for comparison and should stay clean.
-- `pre-release` is the integration branch for local changes and upstream release tag updates.
-- `release` is the production branch and should only receive changes that have already been verified on `pre-release`.
+- `release` is the production **and** integration branch: upstream release tags and local changes are merged here directly, and verification happens here. (There is no `pre-release` branch anymore.)
+- `upstream-v0.1.x` — a bookmark branch pinned at each synced upstream tag.
+- `backup/release-before-v0.1.x` — a snapshot of `release` taken right before each upstream merge, so a bad merge can be reset away.
 
-Recommended workflow:
+Never merge upstream `main`; only merge upstream **release tags**.
 
-1. Fetch upstream release tags instead of merging upstream `main`.
-2. Merge the selected upstream release tag into `pre-release`.
-3. Merge local feature branches into `pre-release`.
-4. Test and verify on `pre-release`.
-5. Merge `pre-release` into `release` for production deployment.
+### Upstream release sync workflow
 
-Use the helper script for upstream release sync:
+```bash
+git fetch upstream --tags
+git branch upstream-v0.1.x v0.1.x                  # bookmark the tag
+git branch backup/release-before-v0.1.x release    # snapshot before merging
+git switch release
+git merge --no-ff v0.1.x -m "Merge tag 'v0.1.x' into release"
+```
+
+Or run the helper script, which does the same thing with interactive tag selection:
 
 ```bash
 scripts/sync-upstream-release.sh
 ```
-
-The script fetches `upstream` tags, suggests the latest tag, lets you choose another tag interactively, and merges the selected tag into `pre-release`. It stops there by design; verify `pre-release` before merging it into `release`.
 
 If the `upstream` remote is missing, add it first:
 
@@ -38,4 +41,39 @@ If the `upstream` remote is missing, add it first:
 git remote add upstream <upstream-repository-url>
 ```
 
-Do not develop directly on `release`. Keep `main` clean so it remains easy to compare with upstream.
+### Recurring merge conflicts
+
+- **`backend/ent` generated code** (`group.go`, `mutation.go`, `runtime/runtime.go`, …): do not hand-merge. Take upstream's generated code with `git checkout v0.1.x -- backend/ent`, restore the merged `backend/ent/schema/`, then regenerate with `GOPROXY=https://goproxy.cn,direct go generate ./ent` (`proxy.golang.org` is unreachable here).
+- **`backend/go.sum`**: take upstream's side, then confirm `go mod tidy` produces no diff before committing.
+- **`backend/internal/handler/openai_images_failover_test.go`**: intentionally deleted locally (the local retry logic diverges and the upstream test breaks CI). Keep it deleted with `git rm` when it conflicts.
+- **`usage_logs` column lists** (`usage_log_repo_query.go` / `usage_log_repo_insert.go`): the local fork adds an `image_quality` column. Keep both sides' columns, and keep the `SELECT` column order identical to the `scanner.Scan` field order. **Trap**: `usage_log_repo_insert.go` has two static `$1..$N` VALUES lists. When both sides add a column, each bumps `$56→$57` independently and git auto-merges "cleanly" one placeholder short. After every merge, verify: static placeholder count == column count == `len(usageLogInsertArgTypes)`. The batch path is generated dynamically and is not affected.
+
+### After the merge
+
+`VERSION` lives in `backend/cmd/server/VERSION` (trailing newline). Upstream tags do not bump it, so make a separate commit:
+
+```
+chore: bump VERSION to x.y.z
+```
+
+Test and CI fixes also go in their own commits, not folded into the merge commit.
+
+### Verification checklist
+
+```bash
+# backend
+cd backend
+GOPROXY=https://goproxy.cn,direct go build ./... && go vet ./...
+go test -tags unit ./internal/...                     # -tags unit is REQUIRED, else //go:build unit cases silently skip
+TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration ./...   # CI equivalent: make test-integration
+
+# frontend
+cd frontend
+npx pnpm@9 install --frozen-lockfile
+npx pnpm@9 typecheck && npx pnpm@9 test:run
+```
+
+- Use **pnpm 9** (what CI uses). pnpm 11 no longer reads the `pnpm.overrides` field in `package.json`, so `--frozen-lockfile` fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, and it will rewrite `pnpm-lock.yaml` and drop a stray `pnpm-workspace.yaml` — never commit those.
+- vitest exits non-zero on Unhandled Errors even when every test passes; check the exit code, not just the summary line.
+
+Keep `main` clean so it remains easy to compare with upstream.

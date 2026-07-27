@@ -44,7 +44,7 @@ select_tag() {
     *)
       echo "Recent tags:" >&2
       list_upstream_tags >&2
-      printf 'Enter tag to merge into pre-release: ' >&2
+      printf 'Enter tag to merge into release: ' >&2
       read -r selected_tag
       ;;
   esac
@@ -78,12 +78,29 @@ main() {
   local selected_tag=""
   selected_tag="$(select_tag "$latest_tag")"
 
-  run git switch pre-release
-  run git merge --no-ff "$selected_tag"
+  run git switch release
 
-  echo "Merged $selected_tag into pre-release."
-  echo "Next steps: run the project verification on pre-release, then merge pre-release into release when it passes."
-  echo "This script stops after updating pre-release; it never merges into release."
+  local bookmark_branch="upstream-${selected_tag}"
+  local backup_branch="backup/release-before-${selected_tag}"
+
+  if git rev-parse -q --verify "refs/heads/$bookmark_branch" >/dev/null; then
+    echo "Branch $bookmark_branch already exists; leaving it as is." >&2
+  else
+    run git branch "$bookmark_branch" "$selected_tag"
+  fi
+
+  if git rev-parse -q --verify "refs/heads/$backup_branch" >/dev/null; then
+    echo "Branch $backup_branch already exists; leaving it as is." >&2
+  else
+    run git branch "$backup_branch" release
+  fi
+
+  run git merge --no-ff "$selected_tag" -m "Merge tag '$selected_tag' into release"
+
+  echo "Merged $selected_tag into release."
+  echo "Next steps: resolve the recurring conflicts documented in CLAUDE.md, commit the VERSION bump separately,"
+  echo "then run the verification checklist (backend build/vet/unit/integration, frontend typecheck/test) before pushing."
+  echo "If the merge goes wrong: git reset --hard $backup_branch"
 }
 
 main "$@"

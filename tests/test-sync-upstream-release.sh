@@ -31,10 +31,11 @@ assert_contains 'git fetch "$upstream_remote" --tags'
 assert_contains "git for-each-ref --sort=-creatordate"
 assert_contains "Use latest upstream tag"
 assert_contains "read -r"
-assert_contains "git switch pre-release"
+assert_contains "git switch release"
+assert_contains 'git branch "$bookmark_branch" "$selected_tag"'
+assert_contains 'git branch "$backup_branch" release'
 assert_contains 'git merge --no-ff "$selected_tag"'
-assert_contains "This script stops after updating pre-release"
-assert_not_contains "git switch release"
-assert_not_contains "git checkout release"
+assert_contains "git reset --hard"
+assert_not_contains "pre-release"
 
 echo "sync script contract ok"
