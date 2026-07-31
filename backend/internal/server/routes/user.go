@@ -61,6 +61,15 @@ func RegisterUserRoutes(
 				// 敏感操作二次验证：授予当前会话一段时间的 step-up 权限
 				totp.POST("/step-up", h.Totp.StepUp)
 			}
+
+			passkeys := user.Group("/passkeys")
+			{
+				passkeys.GET("", h.Passkey.List)
+				passkeys.POST("/register/begin", h.Passkey.BeginRegistration)
+				passkeys.POST("/register/finish", h.Passkey.FinishRegistration)
+				passkeys.PATCH("/:id", h.Passkey.Rename)
+				passkeys.DELETE("/:id", h.Passkey.Delete)
+			}
 		}
 
 		// API Key管理
@@ -86,10 +95,12 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
-		// 模型广场（用户只读：按分组聚合支持模型与定价）
-		modelPlaza := authenticated.Group("/model-plaza")
+		// 模型广场（自研旧版，用户只读：按分组聚合支持模型与定价，含生图档位）
+		// 官方版模型广场（上游 v0.1.169）挂在 /model-plaza，见 RegisterModelPlazaRoutes；
+		// 本地自研版迁移到 /model-plaza-legacy 与之共存。
+		modelPlazaLegacy := authenticated.Group("/model-plaza-legacy")
 		{
-			modelPlaza.GET("/models", h.ModelPlaza.Models)
+			modelPlazaLegacy.GET("/models", h.ModelPlazaLegacy.Models)
 		}
 
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）

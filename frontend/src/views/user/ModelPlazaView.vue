@@ -6,7 +6,7 @@
         <!-- 卡片 1：分组选择 -->
         <div class="card flex flex-col gap-2 p-5">
           <span class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            {{ t('modelPlaza.cards.group') }}
+            {{ t('modelPlazaLegacy.cards.group') }}
           </span>
           <select
             v-model="selectedGroupId"
@@ -27,7 +27,7 @@
         <!-- 卡片 2：分组倍率 -->
         <div class="card flex flex-col gap-1 p-5">
           <span class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            {{ t('modelPlaza.cards.rate') }}
+            {{ t('modelPlazaLegacy.cards.rate') }}
           </span>
           <span class="text-3xl font-bold text-primary-600 dark:text-primary-400">
             {{ effectiveRate != null ? `${formatRate(effectiveRate)}x` : '-' }}
@@ -35,21 +35,21 @@
           <span
             v-if="hasUserRate"
             class="text-xs text-amber-600 dark:text-amber-400"
-            :title="t('modelPlaza.userRateHint')"
+            :title="t('modelPlazaLegacy.userRateHint')"
           >
-            {{ t('modelPlaza.userRateBadge', { rate: formatRate(selectedGroup!.rate_multiplier) }) }}
+            {{ t('modelPlazaLegacy.userRateBadge', { rate: formatRate(selectedGroup!.rate_multiplier) }) }}
           </span>
         </div>
 
         <!-- 卡片 3：支持模型数量 -->
         <div class="card flex flex-col gap-1 p-5">
           <span class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            {{ t('modelPlaza.cards.modelCount') }}
+            {{ t('modelPlazaLegacy.cards.modelCount') }}
           </span>
           <span class="text-3xl font-bold text-gray-900 dark:text-white">
             {{ loading ? '-' : models.length }}
           </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('modelPlaza.cards.modelCountUnit') }}</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('modelPlazaLegacy.cards.modelCountUnit') }}</span>
         </div>
       </div>
 
@@ -58,10 +58,10 @@
         class="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-300"
       >
         <Icon name="infoCircle" size="md" class="mt-0.5 flex-shrink-0" />
-        <span>{{ t('modelPlaza.exchangeHint') }}</span>
+        <span>{{ t('modelPlazaLegacy.exchangeHint') }}</span>
       </div>
       <p class="-mt-3 px-1 text-xs text-gray-400 dark:text-gray-500">
-        {{ t('modelPlaza.priceUnitNote') }}
+        {{ t('modelPlazaLegacy.priceUnitNote') }}
       </p>
 
       <!-- 第三部分：模型列表 -->
@@ -76,7 +76,7 @@
             <input
               v-model="searchQuery"
               type="text"
-              :placeholder="t('modelPlaza.searchPlaceholder')"
+              :placeholder="t('modelPlazaLegacy.searchPlaceholder')"
               class="input pl-10"
             />
           </div>
@@ -95,13 +95,13 @@
             <tr
               class="border-b border-gray-100 bg-gray-50/50 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400"
             >
-              <th class="px-4 py-3 text-left">{{ t('modelPlaza.columns.model') }}</th>
-              <th class="px-4 py-3 text-left">{{ t('modelPlaza.columns.platform') }}</th>
-              <th class="px-4 py-3 text-right">{{ t('modelPlaza.columns.input') }}</th>
-              <th class="px-4 py-3 text-right">{{ t('modelPlaza.columns.output') }}</th>
-              <th class="px-4 py-3 text-right">{{ t('modelPlaza.columns.cacheWrite') }}</th>
-              <th class="px-4 py-3 text-right">{{ t('modelPlaza.columns.cacheRead') }}</th>
-              <th class="px-4 py-3 text-right">{{ t('modelPlaza.columns.imageOutput') }}</th>
+              <th class="px-4 py-3 text-left">{{ t('modelPlazaLegacy.columns.model') }}</th>
+              <th class="px-4 py-3 text-left">{{ t('modelPlazaLegacy.columns.platform') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.input') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.output') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.cacheWrite') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.cacheRead') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.imageOutput') }}</th>
             </tr>
           </thead>
           <tbody v-if="loading">
@@ -115,7 +115,7 @@
             <tr>
               <td colspan="7" class="py-12 text-center">
                 <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('modelPlaza.empty') }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('modelPlazaLegacy.empty') }}</p>
               </td>
             </tr>
           </tbody>
@@ -141,7 +141,7 @@
                     v-if="isPerRequest(m)"
                     class="inline-flex items-center rounded-md border border-pink-200 bg-pink-50 px-2 py-0.5 text-[11px] font-medium text-pink-700 dark:border-pink-900/50 dark:bg-pink-900/20 dark:text-pink-300"
                   >
-                    {{ t('modelPlaza.imagePerRequestTag') }}
+                    {{ t('modelPlazaLegacy.imagePerRequestTag') }}
                   </span>
                 </div>
               </td>
@@ -161,7 +161,7 @@
                     <span class="text-sm font-semibold tabular-nums">{{ tier.price }}</span>
                   </span>
                 </div>
-                <span v-else class="text-gray-400">{{ t('modelPlaza.noPricing') }}</span>
+                <span v-else class="text-gray-400">{{ t('modelPlazaLegacy.noPricing') }}</span>
               </td>
 
               <!-- token 计费：逐列展示「原价划线 + 折算后金额」（每百万 token） -->
@@ -201,7 +201,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import modelPlazaAPI, {
   type ModelPlazaGroup,
   type ModelPlazaModel,
-} from '@/api/modelPlaza'
+} from '@/api/modelPlazaLegacy'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatScaled } from '@/utils/pricing'
