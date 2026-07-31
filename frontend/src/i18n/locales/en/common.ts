@@ -167,7 +167,7 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',
-    modelPlazaLegacy: 'Model Plaza (Legacy)',
+    modelPlazaLegacy: 'Model Plaza (In-house)',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
