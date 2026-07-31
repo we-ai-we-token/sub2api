@@ -69,6 +69,13 @@ func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecha
 
 // CheckBalanceAfterDeduction checks if balance crossed below threshold after deduction.
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
+//
+// Hysteresis: each downward crossing starts a "low-balance cycle" tracked by a per-user
+// alerted timestamp. A deduction that stays entirely above the threshold clears the flag
+// (the balance recovered via a recharge), so the next crossing notifies again — even on
+// the same day. On a crossing, a short cooldown since the last alert suppresses duplicate
+// detections of the same crossing (the legacy snapshot path may replay a stale oldBalance
+// across several requests); anything past the cooldown is a genuine new cycle.
 func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64) {
 	if !s.canNotifyBalance(user) {
 		return
@@ -79,9 +86,60 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 	}
 	newBalance := oldBalance - cost
 	if !crossedDownward(oldBalance, newBalance, effectiveThreshold) {
+		if oldBalance >= effectiveThreshold {
+			// Balance stayed above the threshold: the previous low-balance cycle (if any)
+			// ended with a recharge, so re-arm the alert.
+			s.rearmBalanceLowAlert(ctx, user.ID)
+		}
 		return
 	}
-	s.dispatchBalanceLowEmail(ctx, user, newBalance, effectiveThreshold, rechargeURL)
+	if lastAlerted, alerted := s.balanceLowAlertedAt(ctx, user.ID); alerted && time.Since(lastAlerted) < balanceLowRealertCooldown {
+		return // duplicate detection of the same crossing (stale snapshot / concurrent deduction)
+	}
+	cycleID := time.Now().UTC().Format(time.RFC3339Nano)
+	s.markBalanceLowAlerted(ctx, user.ID, cycleID)
+	s.dispatchBalanceLowEmail(ctx, user, newBalance, effectiveThreshold, rechargeURL, cycleID)
+}
+
+// balanceLowAlertedKeyPrefix stores the per-user "already alerted in this low-balance
+// cycle" flag; the value is the cycle ID (crossing timestamp, RFC3339Nano).
+const balanceLowAlertedKeyPrefix = "balance_low_alerted:"
+
+// balanceLowRealertCooldown suppresses re-alerts for crossings detected shortly after the
+// previous one. Long enough to absorb stale-snapshot replays, short enough that a real
+// recharge-then-drop cycle later the same day still notifies.
+const balanceLowRealertCooldown = 15 * time.Minute
+
+func balanceLowAlertedKey(userID int64) string {
+	return balanceLowAlertedKeyPrefix + strconv.FormatInt(userID, 10)
+}
+
+// rearmBalanceLowAlert clears the alerted flag so the next crossing notifies again.
+func (s *BalanceNotifyService) rearmBalanceLowAlert(ctx context.Context, userID int64) {
+	if err := s.settingRepo.Delete(ctx, balanceLowAlertedKey(userID)); err != nil {
+		slog.Warn("failed to re-arm balance low alert", "user_id", userID, "error", err)
+	}
+}
+
+// balanceLowAlertedAt returns when the current low-balance cycle alerted, if it did.
+// An unparsable stored value is treated as alerted long ago (allows re-alerting).
+func (s *BalanceNotifyService) balanceLowAlertedAt(ctx context.Context, userID int64) (time.Time, bool) {
+	val, err := s.settingRepo.GetValue(ctx, balanceLowAlertedKey(userID))
+	if err != nil || strings.TrimSpace(val) == "" {
+		return time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(val))
+	if err != nil {
+		return time.Time{}, true
+	}
+	return ts, true
+}
+
+// markBalanceLowAlerted records that an alert fired for the current low-balance cycle.
+func (s *BalanceNotifyService) markBalanceLowAlerted(ctx context.Context, userID int64, cycleID string) {
+	if err := s.settingRepo.Set(ctx, balanceLowAlertedKey(userID), cycleID); err != nil {
+		slog.Warn("failed to mark balance low alerted", "user_id", userID, "error", err)
+	}
 }
 
 // canNotifyBalance checks nil guards and user-level toggle.
@@ -119,18 +177,21 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 }
 
 // dispatchBalanceLowEmail collects recipients and sends the alert in a goroutine.
-func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
+// cycleID identifies the current low-balance cycle; it is used as the template-email
+// delivery ReminderKey so per-recipient dedupe aligns with the hysteresis cycle rather
+// than the calendar day (a same-day recharge-then-drop starts a new cycle and re-alerts).
+func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL, cycleID string) {
 	siteName := s.getSiteName(ctx)
 	recipients := s.collectBalanceNotifyRecipients(user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
-		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold)
+		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold, "cycle_id", cycleID)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("panic in balance notification", "recover", r)
 			}
 		}()
-		s.sendBalanceLowEmails(recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
+		s.sendBalanceLowEmails(recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL, cycleID)
 	}()
 }
 
@@ -373,7 +434,7 @@ func (s *BalanceNotifyService) sendEmails(recipients []string, subject, body str
 }
 
 // sendBalanceLowEmails sends balance low notification to all recipients.
-func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userID int64, userName, userEmail string, balance, threshold float64, siteName, rechargeURL string) {
+func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userID int64, userName, userEmail string, balance, threshold float64, siteName, rechargeURL, cycleID string) {
 	displayName := userName
 	if displayName == "" {
 		displayName = userEmail
@@ -389,7 +450,7 @@ func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userID 
 				UserID:         userID,
 				SourceType:     "balance_low",
 				SourceID:       firstNonEmpty(strconv.FormatInt(userID, 10), userEmail),
-				ReminderKey:    time.Now().UTC().Format("2006-01-02"),
+				ReminderKey:    cycleID,
 				Variables: map[string]string{
 					"current_balance": fmt.Sprintf("%.2f", balance),
 					"threshold":       fmt.Sprintf("%.2f", threshold),
