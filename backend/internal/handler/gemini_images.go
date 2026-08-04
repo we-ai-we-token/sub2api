@@ -197,9 +197,11 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 
 		selection := buildGeminiImagesAccountSelection(account, h.cfg)
 		accountSlotWaitStart := time.Now()
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
+		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		service.AddOpsLatencyMs(c, service.OpsAccountSlotWaitMsKey, time.Since(accountSlotWaitStart).Milliseconds())
-		if !acquired {
+		// gemini 合成选号 Acquired=false，不会触发 openAISlotAcquireProfitVetoed；
+		// 任何非 OK（含防御性的利润否决）均按原语义直接返回。
+		if slotResult != openAISlotAcquireOK {
 			return
 		}
 		imageGenRecord.noteAttempt(account)

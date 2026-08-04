@@ -273,14 +273,20 @@ func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(
 		req.Header.Set("Accept", "application/json")
 	}
 
-	// 复用现有自定义 UA / 浏览器 UA 兜底（仅 OAuth 生效）。
+	// 复用现有自定义 UA（仅 OAuth 生效）。
 	if customUA := account.GetOpenAIUserAgent(); customUA != "" {
 		req.Header.Set("User-Agent", customUA)
 	}
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("User-Agent", codexCLIUserAgent)
 	}
-	s.overrideBrowserUserAgent(ctx, account, req)
+	// 终态收口：与主 codex 转发链路一致，强制统一 OAuth 出站身份
+	// （User-Agent / originator / version 同源自洽），原浏览器 UA 兜底已被其吸收。
+	// 该请求恒为 OAuth（Bearer + chatgpt-account-id + originator=codex_cli_rs），
+	// 必须在所有 User-Agent 改写之后调用。
+	if account.Type == AccountTypeOAuth {
+		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
+	}
 	return req, nil
 }
 
