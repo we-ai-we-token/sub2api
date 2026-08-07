@@ -280,12 +280,21 @@ func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("User-Agent", codexCLIUserAgent)
 	}
-	// 终态收口：与主 codex 转发链路一致，强制统一 OAuth 出站身份
-	// （User-Agent / originator / version 同源自洽），原浏览器 UA 兜底已被其吸收。
-	// 该请求恒为 OAuth（Bearer + chatgpt-account-id + originator=codex_cli_rs），
-	// 必须在所有 User-Agent 改写之后调用。
+	// 浏览器型 UA 兜底（仅 OAuth 生效）：codex 图片端点保留自有出站身份
+	// （originator=codex_cli_rs），不走网关统一身份收口--v0.1.172 起默认身份改为
+	// codex-tui，enforceCodexIdentityHeadersWithUA 会把 originator 改写成 codex-tui。
+	// 仅当最终 UA 仍为浏览器型（Mozilla/）时替换为后台配置的 Codex UA，规避 Cloudflare
+	// 对浏览器型 UA 在 ChatGPT 内部接口上的 JS 质询。必须在所有 User-Agent 改写之后调用。
 	if account.Type == AccountTypeOAuth {
-		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
+		if finalUA := strings.TrimSpace(req.Header.Get("User-Agent")); strings.HasPrefix(strings.ToLower(finalUA), "mozilla/") {
+			codexUA := DefaultOpenAICodexUserAgent
+			if s.settingService != nil {
+				if v := strings.TrimSpace(s.settingService.GetOpenAICodexUserAgent(ctx)); v != "" {
+					codexUA = v
+				}
+			}
+			req.Header.Set("User-Agent", codexUA)
+		}
 	}
 	return req, nil
 }

@@ -32,8 +32,8 @@ func newSessionIDUsageLog(sessionID *string) *service.UsageLog {
 // arg slice / arg-type table so the five INSERT column lists stay in sync. session_id
 // is the penultimate arg (created_at is always last).
 func TestPrepareUsageLogInsert_SessionIDArgWiring(t *testing.T) {
-	// 58 = 上游 57 列 + 本地二开的 image_quality 列。
-	require.Len(t, usageLogInsertArgTypes, 58, "arg-type table must include session_id")
+	// 60 = 上游 59 列 + 本地二开的 image_quality 列。
+	require.Len(t, usageLogInsertArgTypes, 60, "arg-type table must include session_id")
 
 	sessionID := "sess-persisted-123"
 	prepared := prepareUsageLogInsert(newSessionIDUsageLog(&sessionID))
