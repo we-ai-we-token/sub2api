@@ -280,6 +280,10 @@ type OpenAIForwardResult struct {
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int
+	// SearchCount is Grok-native web_search / tool search call count (per 1k pricing).
+	SearchCount int
+	// AudioUsage carries Voice billing units when present.
+	AudioUsage *AudioUsage
 
 	// SynthInstructionsTokens 是网关在客户端未提供 instructions 时自动注入的 Codex base
 	// 提示词的 token 数。仅当 openai_synth_cache_hidden_enabled 开关开启、且确实发生注入时 >0。
