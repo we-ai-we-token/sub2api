@@ -169,13 +169,41 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	writerSizeBeforeResponse int,
 	err error,
 ) error {
+	responseWritten := c != nil && c.Writer != nil && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeResponse
+	if code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err); ok {
+		// A body transport failure after a successful HTTP status is retryable only
+		// until real image output has reached the client. Keep the upstream headers
+		// and request ID available to the failover/error passthrough path.
+		headers := http.Header(nil)
+		requestID := ""
+		statusCode := http.StatusBadGateway
+		if resp != nil {
+			headers = resp.Header.Clone()
+			requestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
+		}
+		kind := "failover"
+		if responseWritten {
+			kind = "retry_exhausted_failover"
+		}
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			UpstreamStatusCode: statusCode, UpstreamRequestID: requestID, UpstreamURL: upstreamURL,
+			Kind: kind, Message: message,
+		})
+		if responseWritten {
+			return err
+		}
+		responseBody := []byte(fmt.Sprintf(`{"error":{"type":"upstream_error","code":%q,"message":%q}}`, code, message))
+		shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, responseBody, requestedModel)
+		return &UpstreamFailoverError{StatusCode: statusCode, ResponseBody: responseBody, ResponseHeaders: headers,
+			RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)}
+	}
 	var upstreamErr *OpenAIImagesUpstreamError
 	if !errors.As(err, &upstreamErr) {
 		return err
 	}
 
 	retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
-	responseWritten := c != nil && c.Writer != nil && c.Writer.Size() != writerSizeBeforeResponse
 	kind := "http_error"
 	if retryable {
 		kind = "failover"
@@ -323,7 +351,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 		imageOutputSizes []string
 		firstTokenMs     *int
 	)
-	writerSizeBeforeResponse := c.Writer.Size()
+	// 与 handleOpenAIImagesOAuthResponseError 的比较端同口径：排除非流式 JSON
+	// keepalive 心跳字节，避免 failover 第 2 轮起把上一轮心跳残留误判为已写响应。
+	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 	if parsed.Stream {
 		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, false)
 		if err != nil {

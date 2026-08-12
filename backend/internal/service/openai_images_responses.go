@@ -1237,6 +1237,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingOutput(
 ) (*openAIImagesOAuthForwardOutput, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if shouldClassifyOpenAIUpstreamStreamReadError(err, c.Request.Context()) {
+			err = newOpenAIUpstreamStreamReadError(err)
+		}
 		return nil, err
 	}
 
@@ -1582,7 +1585,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				} else if done {
 					return usage, imageCount, imageOutputSizes, firstTokenMs, nil
 				}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
+				if shouldClassifyOpenAIUpstreamStreamReadError(err, c.Request.Context()) {
+					err = newOpenAIUpstreamStreamReadError(err)
+				}
 				return usage, imageCount, imageOutputSizes, firstTokenMs, err
 			}
 		}
@@ -1675,7 +1680,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				} else if done {
 					return usage, imageCount, imageOutputSizes, firstTokenMs, nil
 				}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(ev.err.Error()))
+				if shouldClassifyOpenAIUpstreamStreamReadError(ev.err, c.Request.Context()) {
+					ev.err = newOpenAIUpstreamStreamReadError(ev.err)
+				}
 				return usage, imageCount, imageOutputSizes, firstTokenMs, ev.err
 			}
 			done, processErr := processLine(ev.line)
