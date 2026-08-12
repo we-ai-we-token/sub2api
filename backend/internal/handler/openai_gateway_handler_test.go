@@ -2175,9 +2175,11 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 			)
 			h := NewOpenAIGatewayHandler(
 				gatewaySvc,
+				nil,
 				service.NewConcurrencyService(nil),
 				billingCacheSvc,
 				service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+				nil,
 				nil,
 				nil,
 				nil,
