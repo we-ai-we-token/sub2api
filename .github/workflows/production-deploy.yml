@@ -102,11 +102,24 @@ jobs:
         run: |
           set -euo pipefail
           SHA="${GITHUB_SHA}"
+          # Derive the builder image from backend/go.mod instead of trusting the
+          # Dockerfile's hardcoded GOLANG_IMAGE default. Upstream bumps the go
+          # directive without touching deploy/Dockerfile (v0.1.177 moved go.mod
+          # to 1.26.6 while the ARG stayed 1.26.5), and the golang images set
+          # GOTOOLCHAIN=local, so a stale pin fails `go mod download` outright.
+          GO_VERSION="$(sed -n 's/^go \([0-9][0-9.]*\)$/\1/p' backend/go.mod)"
+          if [ -z "${GO_VERSION}" ]; then
+            echo "Could not parse the go directive from backend/go.mod" >&2
+            exit 1
+          fi
+          echo "Building with golang:${GO_VERSION}-alpine"
           # --network=host: RUN steps (e.g. `apk add`) share the host net
           # namespace, inheriting the lowered 1400 MTU. Without this the build's
           # bridge network stays at 1500 and package downloads hit the same
           # path-MTU black hole the host-MTU lowering was meant to dodge.
-          docker build --network=host -f deploy/Dockerfile -t "sub2api:${SHA}" .
+          docker build --network=host -f deploy/Dockerfile \
+            --build-arg "GOLANG_IMAGE=golang:${GO_VERSION}-alpine" \
+            -t "sub2api:${SHA}" .
           docker save "sub2api:${SHA}" | gzip -9 > "sub2api-${SHA}.tar.gz"
 
       - name: Upload image archive
