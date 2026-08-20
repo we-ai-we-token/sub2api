@@ -48,11 +48,10 @@ git remote add upstream <upstream-repository-url>
 - **`backend/internal/handler/openai_images_failover_test.go`**: intentionally deleted locally (the local retry logic diverges and the upstream test breaks CI). Keep it deleted with `git rm` when it conflicts.
 - **`usage_logs` column lists** (`usage_log_repo_query.go` / `usage_log_repo_insert.go`): the local fork adds an `image_quality` column. Keep both sides' columns, and keep the `SELECT` column order identical to the `scanner.Scan` field order. **Trap**: `usage_log_repo_insert.go` has two static `$1..$N` VALUES lists. When both sides add a column, each bumps `$56→$57` independently and git auto-merges "cleanly" one placeholder short. After every merge, verify: static placeholder count == column count == `len(usageLogInsertArgTypes)`. The batch path is generated dynamically and is not affected.
 - **`backend/internal/repository/group_usage_rollup_trigger_integration_test.go`**: locally patched (since v0.1.177). Upstream's `SerializesInsertTransactionAcrossMidnight` / `KeepsWatermarkForTodayInsert` compute expected dates with a hardcoded `'Asia/Shanghai'`, while migration 223 made the trigger read `current_setting('TimeZone')`. CI's Postgres session is UTC, so both fail during UTC 16:00–24:00 (北京时间 0–8 点) and pass the rest of the day. Keep our side (`AT TIME ZONE current_setting('TimeZone')`) unless upstream fixes it. **Trap**: this failure is time-of-day dependent — a green CI run outside that window does not mean the patch survived the merge; grep for `Asia/Shanghai` in those two functions instead.
-- **`frontend/src/components/account/__tests__/CreateAccountModal.grok.spec.ts`**: locally patched (since v0.1.178). 上游把 `CreateAccountModal.vue` 的 `apiKeyValuePlaceholder` 从三元表达式改成 `switch`（为了支持 kimi/zhipu/deepseek），却没同步这个「读源码字符串」的断言，导致 `? 'xai-...'` 在上游 tag 上就是红灯。我们改成断言 `case 'grok':` + `return 'xai-...'`。上游修好后可以还原成上游侧。
 
 ### After the merge
 
-`VERSION` lives in `backend/cmd/server/VERSION` (trailing newline). Upstream tags do not bump it, so make a separate commit:
+`VERSION` lives in `backend/cmd/server/VERSION` (trailing newline). 上游 tag 里的 VERSION **永远落后 tag 一版**（`v0.1.179` 的文件内容是 `0.1.178`），刚好等于我们上一轮 bump 后的值，所以合并时不会冲突、也不会自动更新。仍然要单独提一个 commit 把它 bump 到刚合入的 tag 版本：
 
 ```
 chore: bump VERSION to x.y.z
