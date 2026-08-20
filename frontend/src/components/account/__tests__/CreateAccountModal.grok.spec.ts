@@ -14,9 +14,7 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain("newPlatform === 'grok'")
     expect(source).toContain("? 'https://api.x.ai/v1'")
     expect(source).toContain("form.platform === 'grok'")
-    // 上游 v0.1.178 把 apiKeyValuePlaceholder 从三元改成 switch（新增 kimi/zhipu/deepseek），
-    // 但没同步这里的断言。保留语义（Grok 默认 key 占位符），改成匹配 switch 分支。
-    expect(source).toContain("case 'grok':")
+    expect(source).toContain(':placeholder="apiKeyValuePlaceholder"')
     expect(source).toContain("return 'xai-...'")
   })
 
