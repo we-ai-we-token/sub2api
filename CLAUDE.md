@@ -48,6 +48,18 @@ git remote add upstream <upstream-repository-url>
 - **`backend/internal/handler/openai_images_failover_test.go`**: intentionally deleted locally (the local retry logic diverges and the upstream test breaks CI). Keep it deleted with `git rm` when it conflicts.
 - **`usage_logs` column lists** (`usage_log_repo_query.go` / `usage_log_repo_insert.go`): the local fork adds an `image_quality` column. Keep both sides' columns, and keep the `SELECT` column order identical to the `scanner.Scan` field order. **Trap**: `usage_log_repo_insert.go` has two static `$1..$N` VALUES lists. When both sides add a column, each bumps `$56→$57` independently and git auto-merges "cleanly" one placeholder short. After every merge, verify: static placeholder count == column count == `len(usageLogInsertArgTypes)`. The batch path is generated dynamically and is not affected.
 - **`backend/internal/repository/group_usage_rollup_trigger_integration_test.go`**: locally patched (since v0.1.177). Upstream's `SerializesInsertTransactionAcrossMidnight` / `KeepsWatermarkForTodayInsert` compute expected dates with a hardcoded `'Asia/Shanghai'`, while migration 223 made the trigger read `current_setting('TimeZone')`. CI's Postgres session is UTC, so both fail during UTC 16:00–24:00 (北京时间 0–8 点) and pass the rest of the day. Keep our side (`AT TIME ZONE current_setting('TimeZone')`) unless upstream fixes it. **Trap**: this failure is time-of-day dependent — a green CI run outside that window does not mean the patch survived the merge; grep for `Asia/Shanghai` in those two functions instead.
+- **OAuth 生图相关文件（`openai_images_responses.go` / `openai_images_test.go`）**: 二开把 `buildOpenAIImagesResponsesRequest`、`openAIImageUploadToDataURL`、`shouldPassOpenAIImagesN`、`openAIImagesUpstreamErrorResponseBody`、`handleOpenAIImagesOAuthResponseError`、`forwardOpenAIImagesOAuthResponses` 搬到了 `openai_images_responses_upstream.go`，两侧文件结构差太多，git 三方合并会把上游 hunk 对到完全不相干的位置（冲突块一侧几十行、另一侧一行）。**不要硬啃冲突块**，改用「以我方为底 + 重放上游本文件 diff」：
+
+  ```bash
+  git checkout --ours -- backend/internal/service/openai_images_responses.go
+  git diff v0.1.<prev> v0.1.<new> -- backend/internal/service/openai_images_responses.go | git apply --reject
+  # 逐个处理 .rej：属于已搬家函数的 hunk 手工落到 openai_images_responses_upstream.go
+  ```
+
+  想看清「我方是不是删了这一段」时，用 `git -c merge.conflictstyle=zdiff3 checkout --merge -- <file>` 重新生成带 base 的冲突块。
+- **上游新增的生图用例走错链路**: 二开按 `Group.ImageUseResponsesAPI`（DB 列默认 true）给 OAuth 生图分流，裸 `gin.Context` 无分组会退化到二开专用 codex images 端点，上游用例的 URL/failover 断言全部落空。补一行让它像线上一样走 Responses 链路：`c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})`。
+- **`handleOpenAIImagesOAuthNonStreamingResponse` / `...StreamingResponse`**: 二开多一个末位 `retryableEmptyOutput bool` 形参，上游新增用例按上游签名调用会编译失败，补 `false`（沿用上游不做空输出重试的语义）。
+- **gofmt 对齐**: 双方各自往同一个结构体字面量加字段时，auto-merge 出来的字段名列宽不再是 gofmt 结果，CI 的 golangci-lint gofmt formatter 会报错，但 `go build`/`go vet` 都看不出来。每次合并后跑一遍 `gofmt -l ./cmd ./internal ./pkg`。
 
 ### After the merge
 
@@ -65,8 +77,10 @@ Test and CI fixes also go in their own commits, not folded into the merge commit
 # backend
 cd backend
 GOPROXY=https://goproxy.cn,direct go build ./... && go vet ./...
+gofmt -l ./cmd ./internal ./pkg                       # must print nothing; go vet does NOT catch merge-broken alignment
 go test -tags unit ./internal/...                     # -tags unit is REQUIRED, else //go:build unit cases silently skip
 TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration ./...   # CI equivalent: make test-integration
+GOFLAGS=-mod=mod go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.0 run --timeout=30m ./...  # same version as backend-ci.yml
 
 # frontend
 cd frontend
