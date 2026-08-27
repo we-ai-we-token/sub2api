@@ -131,6 +131,10 @@ func TestOpenAIGatewayServiceForwardImages_TextFallbackCoolsImageCapability(t *t
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
+	// 本地二开：生图链路按分组开关分流（Group.ImageUseResponsesAPI，DB 列默认 true），
+	// 无分组的裸 context 会退化到二开专用 codex images 端点。显式给出默认分组，
+	// 让本用例像线上一样走上游 Responses 链路。
+	c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 
 	svc := &OpenAIGatewayService{
 		accountRepo: repo,
