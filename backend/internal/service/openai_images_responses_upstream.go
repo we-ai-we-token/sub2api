@@ -65,6 +65,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 
 	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
 	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
+	req, _ = sjson.SetBytes(req, "instructions", openAIImagesVerbatimPromptInstructions)
 
 	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
 	input, _ = sjson.SetBytes(input, "0.content.0.text", prompt)
@@ -159,6 +160,25 @@ func openAIImagesUpstreamErrorResponseBody(err *OpenAIImagesUpstreamError) []byt
 	return body
 }
 
+const (
+	openAIImagesOAuthUnavailableCooldown = 30 * time.Minute
+	openAIImagesOAuthUnavailableReason   = "openai_images_oauth_tool_unavailable"
+)
+
+func (s *OpenAIGatewayService) coolOpenAIImagesOAuthTool(ctx context.Context, account *Account) {
+	if s == nil || s.accountRepo == nil || account == nil || account.Platform != PlatformOpenAI {
+		return
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	resetAt := time.Now().Add(openAIImagesOAuthUnavailableCooldown)
+	if err := s.accountRepo.SetModelRateLimit(stateCtx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImagesOAuthUnavailableReason); err != nil {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool cooldown write failed account_id=%d error=%v", account.ID, err)
+		return
+	}
+	logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool unavailable account_id=%d reset_in=%s", account.ID, time.Until(resetAt).Truncate(time.Second))
+}
+
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	ctx context.Context,
 	c *gin.Context,
@@ -195,8 +215,15 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		}
 		responseBody := []byte(fmt.Sprintf(`{"error":{"type":"upstream_error","code":%q,"message":%q}}`, code, message))
 		shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, responseBody, requestedModel)
-		return &UpstreamFailoverError{StatusCode: statusCode, ResponseBody: responseBody, ResponseHeaders: headers,
-			RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)}
+		return s.newOpenAIAccountFailoverError(
+			account,
+			statusCode,
+			headers,
+			responseBody,
+			message,
+			shouldDisable,
+			!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode),
+		)
 	}
 	var upstreamErr *OpenAIImagesUpstreamError
 	if !errors.As(err, &upstreamErr) {
@@ -231,18 +258,35 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		Message:            upstreamErr.clientMessage(),
 	})
 
+	responseBody := openAIImagesUpstreamErrorResponseBody(upstreamErr)
+	if upstreamErr.Code == "image_generation_unavailable" {
+		s.coolOpenAIImagesOAuthTool(ctx, account)
+		if responseWritten {
+			return err
+		}
+		return s.newOpenAIAccountFailoverError(
+			account,
+			upstreamErr.StatusCode,
+			headers,
+			responseBody,
+			upstreamErr.clientMessage(),
+			false,
+			false,
+		)
+	}
 	if !retryable || responseWritten {
 		return err
 	}
-
-	responseBody := openAIImagesUpstreamErrorResponseBody(upstreamErr)
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
-	return &UpstreamFailoverError{
-		StatusCode:             upstreamErr.StatusCode,
-		ResponseBody:           responseBody,
-		ResponseHeaders:        headers,
-		RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
-	}
+	return s.newOpenAIAccountFailoverError(
+		account,
+		upstreamErr.StatusCode,
+		headers,
+		responseBody,
+		upstreamErr.clientMessage(),
+		shouldDisable,
+		!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
+	)
 }
 
 // forwardOpenAIImagesOAuthResponses 走上游 Responses 链路（image_generation 工具，
@@ -292,13 +336,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "text/event-stream")
+	upstreamReq.Header.Set("OpenAI-Beta", "responses=experimental")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -335,11 +380,15 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 				Message:            upstreamMsg,
 			})
 			s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
-			}
+			return nil, s.newOpenAIAccountFailoverError(
+				account,
+				resp.StatusCode,
+				resp.Header,
+				respBody,
+				upstreamMsg,
+				false,
+				account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			)
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
 	}

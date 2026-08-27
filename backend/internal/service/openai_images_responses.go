@@ -606,13 +606,10 @@ func openAIImagesUpstreamErrorFromSSEPayload(payload []byte) *OpenAIImagesUpstre
 	}
 }
 
-// extractOpenAIImagesModelRefusal 从上游 SSE 响应体提取「模型未出图、改用文字拒绝」
-// 的拒绝文本（内容审核场景）。
-//
-// 上游 response.completed 无图时，模型常以 output_text / message 形式输出拒绝说明
-// （如“被安全系统判定为不适合生成”）。这类失败是内容策略拦截，重试/换账号均无效，
-// 应把该文本作为内容策略错误透传给客户端。返回空串表示无文字输出（真空响应）。
-func extractOpenAIImagesModelRefusal(body []byte) string {
+// extractOpenAIImagesModelText collects textual terminal output from an image
+// request. A text response is evidence that the image tool did not produce an
+// image; its semantics still need classification before choosing a client error.
+func extractOpenAIImagesModelText(body []byte) string {
 	var b strings.Builder
 	collect := func(s string) {
 		if s = strings.TrimSpace(s); s != "" {
@@ -622,16 +619,14 @@ func extractOpenAIImagesModelRefusal(body []byte) string {
 			_, _ = b.WriteString(s)
 		}
 	}
-	forEachOpenAISSEDataPayload(string(body), func(payload []byte) {
+	consumePayload := func(payload []byte) {
 		if !gjson.ValidBytes(payload) {
 			return
 		}
 		switch gjson.GetBytes(payload, "type").String() {
 		case "response.output_text.delta":
-			// 流式文本增量。
 			collect(gjson.GetBytes(payload, "delta").String())
 		case "response.completed", "response.output_item.done":
-			// 终态里的 message/output_text。
 			gjson.GetBytes(payload, "response.output").ForEach(func(_, item gjson.Result) bool {
 				if item.Get("type").String() == "message" {
 					item.Get("content").ForEach(func(_, part gjson.Result) bool {
@@ -652,14 +647,67 @@ func extractOpenAIImagesModelRefusal(body []byte) string {
 				})
 			}
 		}
-	})
-	refusal := strings.TrimSpace(b.String())
-	// 截断过长文本，避免把整段模型输出塞进错误响应。
-	const maxRefusal = 600
-	if len(refusal) > maxRefusal {
-		refusal = refusal[:maxRefusal]
 	}
-	return refusal
+	if gjson.ValidBytes(body) {
+		consumePayload(body)
+	} else {
+		forEachOpenAISSEDataPayload(string(body), consumePayload)
+	}
+	text := strings.TrimSpace(b.String())
+	const maxText = 600
+	if len(text) > maxText {
+		return text[:maxText]
+	}
+	return text
+}
+
+func isOpenAIImagesContentPolicyRefusal(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{
+		"content policy", "content_policy", "content filter", "content_filter",
+		"safety system", "safety policy", "safety violation", "moderation",
+		"安全系统", "安全策略", "安全政策", "内容政策", "内容审核", "违规内容", "不适合生成",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractOpenAIImagesModelRefusal returns only text with an explicit safety or
+// moderation signal. Plain prompt suggestions are capability failures instead.
+func extractOpenAIImagesModelRefusal(body []byte) string {
+	text := extractOpenAIImagesModelText(body)
+	if !isOpenAIImagesContentPolicyRefusal(text) {
+		return ""
+	}
+	return text
+}
+
+func openAIImagesTextFallbackError(body []byte) *OpenAIImagesUpstreamError {
+	return openAIImagesTextFallbackErrorForText(extractOpenAIImagesModelText(body))
+}
+
+func openAIImagesTextFallbackErrorForText(text string) *OpenAIImagesUpstreamError {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if isOpenAIImagesContentPolicyRefusal(text) {
+		return &OpenAIImagesUpstreamError{
+			StatusCode: http.StatusBadRequest,
+			ErrorType:  "image_generation_user_error",
+			Code:       "content_policy_violation",
+			Message:    sanitizeUpstreamErrorMessage(text),
+		}
+	}
+	return &OpenAIImagesUpstreamError{
+		StatusCode: http.StatusBadGateway,
+		ErrorType:  "upstream_error",
+		Code:       "image_generation_unavailable",
+		Message:    "Upstream did not execute image generation",
+	}
 }
 
 // summarizeOpenAIImagesNoOutputBody 从上游 SSE 响应体提取诊断摘要，用于软失败时
@@ -899,8 +947,18 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		modelForCooldown = strings.TrimSpace(requestedModel[0])
 	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, modelForCooldown)
+	failoverErr := s.newOpenAIAccountFailoverError(
+		account,
+		resp.StatusCode,
+		resp.Header,
+		body,
+		upstreamMsg,
+		shouldDisable,
+		false,
+	)
+	shouldFailover := shouldDisable || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount)
 	kind := "http_error"
-	if shouldDisable {
+	if shouldFailover {
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -913,12 +971,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
-	if shouldDisable {
-		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			RetryableOnSameAccount: false,
-		}
+	if shouldFailover {
+		return nil, failoverErr
 	}
 
 	// Surface the real upstream error to the client.
@@ -1262,22 +1316,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingOutput(
 			}
 			return nil, upstreamErr
 		}
-		// 上游 v0.1.139 新增：内容审核拒绝兜底。模型未出图但输出了文字拒绝
-		// （response.completed 带 output_text / message，内容如“被安全系统判定为不适合
-		// 生成”）。这是用户 prompt 触发 OpenAI 内容策略、模型主动改用文字回应，**换账号/
-		// 重试均无效**（内容层拦截，与账号/承载模型无关），应把拒绝理由作为 400 透传给客
-		// 户端，避免无谓重试 + 消耗其它账号配额，且让客户端拿到可读的拒绝原因。此判定需置
-		// 于 foundFinal 之前，因 refusal 通常也带 final 事件，但内容层决策应优先于重试。
-		if refusal := extractOpenAIImagesModelRefusal(body); refusal != "" {
-			refusalErr := &OpenAIImagesUpstreamError{
-				StatusCode: http.StatusBadRequest,
-				ErrorType:  "image_generation_user_error",
-				Code:       "content_policy_violation",
-				Message:    sanitizeUpstreamErrorMessage(refusal),
+		// 上游文字兜底（v0.1.183 起）：模型未出图但输出了文字。
+		// 内容审核拒绝（安全/审核关键词）→ 400 content_policy_violation，换账号/重试均无
+		// 效，直接透传给客户端；其余纯文字回应 → 502 image_generation_unavailable，属于
+		// 上游能力性失败，交由 handleOpenAIImagesOAuthResponseError 冷却账号并 failover。
+		// 此判定需置于 foundFinal 之前，因文字兜底通常也带 final 事件，但内容层决策应优先。
+		if textFallbackErr := openAIImagesTextFallbackError(body); textFallbackErr != nil {
+			setOpsUpstreamError(c, textFallbackErr.clientStatusCode(), textFallbackErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(body))
+			if !IsOpenAIImagesRetryableUpstreamError(textFallbackErr) {
+				writeOpenAIImagesUpstreamErrorResponse(c, textFallbackErr)
 			}
-			setOpsUpstreamError(c, http.StatusBadRequest, refusalErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(body))
-			writeOpenAIImagesUpstreamErrorResponse(c, refusalErr)
-			return nil, refusalErr
+			return nil, textFallbackErr
 		}
 		// 真空响应（既无图也无文字）：保留本地重试机制——foundFinal 时返回可重试 sentinel
 		// 触发同账号/换账号重试（调用方据 errOpenAIImagesEmptyOutputRetryable 处理）。
@@ -1312,7 +1361,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 ) (OpenAIUsage, int, []string, error) {
 	output, err := s.handleOpenAIImagesOAuthNonStreamingOutput(resp, c, responseFormat, fallbackModel, retryableEmptyOutput)
 	if err != nil {
-		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok && !IsRetryableOpenAIImagesUpstreamError(upstreamErr) && !c.Writer.Written() {
+		// 只有既非本地可重试（特殊瞬态）、也非上游 5xx 服务端错误时，才把错误直接写给客户端。
+		// 写响应会关闭 failover 窗口（responseWritten），5xx 需留给上层换账号重试。
+		if upstreamErr, ok := err.(*OpenAIImagesUpstreamError); ok &&
+			!IsRetryableOpenAIImagesUpstreamError(upstreamErr) &&
+			!IsOpenAIImagesRetryableUpstreamError(upstreamErr) &&
+			!c.Writer.Written() {
 			writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
 		}
 		if output != nil {
@@ -1369,6 +1423,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	pendingResults := make([]openAIResponsesImageResult, 0, 1)
 	pendingSeen := make(map[string]struct{})
 	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
+	var fallbackText strings.Builder
+	appendFallbackText := func(text string) {
+		if text == "" || fallbackText.Len() >= 600 {
+			return
+		}
+		remaining := 600 - fallbackText.Len()
+		if len(text) > remaining {
+			text = text[:remaining]
+		}
+		_, _ = fallbackText.WriteString(text)
+	}
 	var createdAt int64
 	clientDisconnected := false
 	lastDownstreamWriteAt := time.Now()
@@ -1413,6 +1478,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				}
 				return
 			}
+		}
+		if gjson.GetBytes(dataBytes, "type").String() == "response.output_text.delta" {
+			appendFallbackText(gjson.GetBytes(dataBytes, "delta").String())
 		}
 		switch gjson.GetBytes(dataBytes, "type").String() {
 		case "response.image_generation_call.partial_image":
@@ -1483,7 +1551,24 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
-				// 保留本地线上行为：流式 response.completed 无图时返回可重试 sentinel，
+				// 上游文字兜底（v0.1.183 起）：模型改用文字回应而未出图。内容审核拒绝 →
+				// 400 直接写给客户端；其余纯文字 → 502 image_generation_unavailable，
+				// 交由 handleOpenAIImagesOAuthResponseError 冷却账号并 failover。
+				textFallbackErr := openAIImagesTextFallbackErrorForText(fallbackText.String())
+				if textFallbackErr == nil {
+					textFallbackErr = openAIImagesTextFallbackError(dataBytes)
+				}
+				if textFallbackErr != nil {
+					retryable := IsOpenAIImagesRetryableUpstreamError(textFallbackErr)
+					setOpsUpstreamError(c, textFallbackErr.clientStatusCode(), textFallbackErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(dataBytes))
+					if !retryable && !clientDisconnected {
+						s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBodyFromUpstream(textFallbackErr))
+					}
+					processDataErr = textFallbackErr
+					processDataDone = true
+					return
+				}
+				// 保留本地线上行为：真空响应（既无图也无文字）时返回可重试 sentinel，
 				// 由调用方据 errOpenAIImagesEmptyOutputRetryable 触发重试（与非流式路径一致）。
 				processDataErr = errOpenAIImagesEmptyOutputRetryable
 				processDataDone = true

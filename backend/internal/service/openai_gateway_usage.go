@@ -146,6 +146,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
+	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(result))
 
 	// 隐藏/扣减自动注入的 Codex instructions 缓存 token（唯一扣减真相源）：
 	// SynthInstructionsTokens>0 表示开关开启且本次注入了整份 base prompt，将该部分从 input/cache
@@ -1145,7 +1146,9 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+			notifyOpenAIAutoReset(accountID)
+		}
 	}()
 }
 
