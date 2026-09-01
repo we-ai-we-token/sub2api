@@ -103,6 +103,7 @@ WITH base AS (
     AND %s
     AND ($5 = '' OR ul.model = $5)
     AND ($6::bigint IS NULL OR ul.group_id = $6)
+    AND ($7::bigint IS NULL OR ul.user_id = $7)
 )
 SELECT
   bucket_start,
@@ -118,7 +119,7 @@ GROUP BY bucket_start
 ORDER BY bucket_start`, imageModelWhere(f.Platform))
 
 	rows, err := r.sql.QueryContext(ctx, query,
-		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID))
+		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID), nullableInt64(f.UserID))
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +134,65 @@ ORDER BY bucket_start`, imageModelWhere(f.Platform))
 		}
 		b.MinMs, b.P25Ms, b.P50Ms = nullFloatPtr(minMs), nullFloatPtr(p25), nullFloatPtr(p50)
 		b.P75Ms, b.MaxMs, b.AvgMs = nullFloatPtr(p75), nullFloatPtr(maxMs), nullFloatPtr(avgMs)
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// StageLatencySeries 返回「上游生成 vs 回传客户端」分段耗时分位数曲线。
+// 数据源是 image_generation_records（逐请求落库，含分段计时），只取成功请求：
+// 失败请求没有完整回传阶段，混进来会把 response 分位数拉低。
+//
+// 这两条曲线是定责用的：upstream 高说明上游/我们慢；response 高说明客户端
+// 下载慢（通常是客户端把自己的带宽切给了过多并发），跟我们无关。
+func (r *operationImageReportRepository) StageLatencySeries(ctx context.Context, f service.ImageReportSeriesFilter) ([]service.ImageStageLatencyBucket, error) {
+	if r.sql == nil {
+		return nil, errors.New("operation image report repository: nil db")
+	}
+	const query = `
+WITH base AS (
+  SELECT
+    (date_bin($1::interval, r.created_at AT TIME ZONE $2, TIMESTAMP '2000-01-01 00:00:00')) AT TIME ZONE $2 AS bucket_start,
+    r.upstream_ms::float8 AS upstream_ms,
+    r.response_ms::float8 AS response_ms
+  FROM image_generation_records r
+  WHERE r.created_at >= $3 AND r.created_at < $4
+    AND r.success = TRUE
+    AND ($5 = '' OR r.model = $5)
+    AND ($6::bigint IS NULL OR r.group_id = $6)
+    AND ($7::bigint IS NULL OR r.user_id = $7)
+    AND ($8 = '' OR r.platform = $8)
+)
+SELECT
+  bucket_start,
+  COUNT(*) AS cnt,
+  percentile_cont(0.50) WITHIN GROUP (ORDER BY upstream_ms) AS upstream_p50,
+  percentile_cont(0.90) WITHIN GROUP (ORDER BY upstream_ms) AS upstream_p90,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY upstream_ms) AS upstream_p95,
+  percentile_cont(0.50) WITHIN GROUP (ORDER BY response_ms) AS response_p50,
+  percentile_cont(0.90) WITHIN GROUP (ORDER BY response_ms) AS response_p90,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY response_ms) AS response_p95
+FROM base
+GROUP BY bucket_start
+ORDER BY bucket_start`
+
+	rows, err := r.sql.QueryContext(ctx, query,
+		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model,
+		nullableInt64(f.GroupID), nullableInt64(f.UserID), f.Platform)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []service.ImageStageLatencyBucket
+	for rows.Next() {
+		var b service.ImageStageLatencyBucket
+		var up50, up90, up95, rp50, rp90, rp95 sql.NullFloat64
+		if err := rows.Scan(&b.BucketStart, &b.Count, &up50, &up90, &up95, &rp50, &rp90, &rp95); err != nil {
+			return nil, err
+		}
+		b.UpstreamP50, b.UpstreamP90, b.UpstreamP95 = nullFloatPtr(up50), nullFloatPtr(up90), nullFloatPtr(up95)
+		b.ResponseP50, b.ResponseP90, b.ResponseP95 = nullFloatPtr(rp50), nullFloatPtr(rp90), nullFloatPtr(rp95)
 		out = append(out, b)
 	}
 	return out, rows.Err()
@@ -155,6 +215,7 @@ WITH succ AS (
     AND %s
     AND ($5 = '' OR ul.model = $5)
     AND ($6::bigint IS NULL OR ul.group_id = $6)
+    AND ($7::bigint IS NULL OR ul.user_id = $7)
   GROUP BY 1
 ),
 fail AS (
@@ -167,6 +228,7 @@ fail AS (
     AND %s
     AND ($5 = '' OR oel.model = $5)
     AND ($6::bigint IS NULL OR oel.group_id = $6)
+    AND ($7::bigint IS NULL OR oel.user_id = $7)
   GROUP BY 1
 )
 SELECT COALESCE(s.bucket_start, fl.bucket_start) AS bucket_start,
@@ -177,7 +239,7 @@ FULL OUTER JOIN fail fl ON s.bucket_start = fl.bucket_start
 ORDER BY bucket_start`, imageModelWhere(f.Platform), imageModelWhereErr(f.Platform))
 
 	rows, err := r.sql.QueryContext(ctx, query,
-		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID))
+		bucketIntervalArg(f.Bucket), f.TZ, f.Start, f.End, f.Model, nullableInt64(f.GroupID), nullableInt64(f.UserID))
 	if err != nil {
 		return nil, err
 	}

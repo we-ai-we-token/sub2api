@@ -8,21 +8,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOperationImageReportParseGroupID(t *testing.T) {
+func TestOperationImageReportParseQueryInt64(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := &OperationImageReportHandler{}
 
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("GET", "/?group_id=42", nil)
-	got := h.parseGroupID(c)
+	newCtx := func(target string) *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("GET", target, nil)
+		return c
+	}
+
+	got := h.parseQueryInt64(newCtx("/?group_id=42"), "group_id")
 	require.NotNil(t, got)
 	require.Equal(t, int64(42), *got)
 
-	c2, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c2.Request = httptest.NewRequest("GET", "/?group_id=abc", nil)
-	require.Nil(t, h.parseGroupID(c2))
+	// 用户检索用的 user_id 走同一个解析器
+	gotUser := h.parseQueryInt64(newCtx("/?user_id=244"), "user_id")
+	require.NotNil(t, gotUser)
+	require.Equal(t, int64(244), *gotUser)
 
-	c3, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c3.Request = httptest.NewRequest("GET", "/", nil)
-	require.Nil(t, h.parseGroupID(c3))
+	// 非法值与缺省都按「不筛选」处理，不能退化成 0 把结果筛空
+	require.Nil(t, h.parseQueryInt64(newCtx("/?group_id=abc"), "group_id"))
+	require.Nil(t, h.parseQueryInt64(newCtx("/"), "group_id"))
+	require.Nil(t, h.parseQueryInt64(newCtx("/?user_id="), "user_id"))
 }

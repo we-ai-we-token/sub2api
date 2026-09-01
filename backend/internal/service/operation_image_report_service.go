@@ -25,6 +25,7 @@ type ImageReportSeriesFilter struct {
 	Platform string // "openai" | "gemini"
 	Model    string // 可选精确模型；"" 表示全部
 	GroupID  *int64 // 可选
+	UserID   *int64 // 可选：按用户筛选
 	Bucket   string // "5m" | "1h"
 	TZ       string // IANA 时区
 	Start    time.Time
@@ -40,6 +41,20 @@ type ImageLatencyBucket struct {
 	P75Ms       *float64  `json:"p75_ms"`
 	MaxMs       *float64  `json:"max_ms"`
 	AvgMs       *float64  `json:"avg_ms"`
+}
+
+// ImageStageLatencyBucket 是「上游生成 vs 回传客户端」分段耗时的分位数桶。
+// 数据源为 image_generation_records（逐请求落库），只统计成功请求：
+// 失败请求没有完整的回传阶段，混进来会把分位数拉偏。
+type ImageStageLatencyBucket struct {
+	BucketStart time.Time `json:"bucket_start"`
+	Count       int64     `json:"count"`
+	UpstreamP50 *float64  `json:"upstream_p50_ms"`
+	UpstreamP90 *float64  `json:"upstream_p90_ms"`
+	UpstreamP95 *float64  `json:"upstream_p95_ms"`
+	ResponseP50 *float64  `json:"response_p50_ms"`
+	ResponseP90 *float64  `json:"response_p90_ms"`
+	ResponseP95 *float64  `json:"response_p95_ms"`
 }
 
 type ImageRequestBucket struct {
@@ -94,6 +109,7 @@ type ImageReportFilterOptions struct {
 // OperationImageReportRepository 由 package repository 实现（仅只读）。
 type OperationImageReportRepository interface {
 	LatencySeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageLatencyBucket, error)
+	StageLatencySeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageStageLatencyBucket, error)
 	RequestSeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageRequestBucket, error)
 	TodayBreakdown(ctx context.Context, start, end time.Time) ([]ImageTodayItem, error)
 	ListImageAccountConcurrency(ctx context.Context, category string) ([]ImageAccountConcurrency, error)
@@ -153,11 +169,12 @@ func todayWindow(tz string, now time.Time) (time.Time, time.Time) {
 }
 
 // BuildSeriesFilter 归一化原始查询参数并固定近 24h 窗口。
-func (s *OperationImageReportService) BuildSeriesFilter(platform, model string, groupID *int64, bucket, tz string, now time.Time) ImageReportSeriesFilter {
+func (s *OperationImageReportService) BuildSeriesFilter(platform, model string, groupID, userID *int64, bucket, tz string, now time.Time) ImageReportSeriesFilter {
 	return ImageReportSeriesFilter{
 		Platform: normalizePlatform(platform),
 		Model:    strings.TrimSpace(model),
 		GroupID:  groupID,
+		UserID:   userID,
 		Bucket:   normalizeBucket(bucket),
 		TZ:       normalizeTZ(tz),
 		Start:    now.Add(-24 * time.Hour),
@@ -167,6 +184,12 @@ func (s *OperationImageReportService) BuildSeriesFilter(platform, model string, 
 
 func (s *OperationImageReportService) LatencySeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageLatencyBucket, error) {
 	return s.repo.LatencySeries(ctx, f)
+}
+
+// StageLatencySeries 返回「上游生成 vs 回传客户端」的分段耗时分位数曲线。
+// upstream 高 = 上游/我们慢；response 高 = 客户端下载慢（带宽被自身并发瓜分）。
+func (s *OperationImageReportService) StageLatencySeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageStageLatencyBucket, error) {
+	return s.repo.StageLatencySeries(ctx, f)
 }
 
 func (s *OperationImageReportService) RequestSeries(ctx context.Context, f ImageReportSeriesFilter) ([]ImageRequestBucket, error) {

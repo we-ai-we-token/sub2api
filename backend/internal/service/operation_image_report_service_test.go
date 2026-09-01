@@ -13,10 +13,16 @@ type fakeImageReportRepo struct {
 	categoryAccts map[string][]ImageAccountConcurrency
 	alertAccts    []ImageAccountConcurrency
 	reqBuckets    []ImageRequestBucket
+	stageBuckets  []ImageStageLatencyBucket
+	lastFilter    ImageReportSeriesFilter
 }
 
 func (f *fakeImageReportRepo) LatencySeries(context.Context, ImageReportSeriesFilter) ([]ImageLatencyBucket, error) {
 	return nil, nil
+}
+func (f *fakeImageReportRepo) StageLatencySeries(_ context.Context, filter ImageReportSeriesFilter) ([]ImageStageLatencyBucket, error) {
+	f.lastFilter = filter
+	return f.stageBuckets, nil
 }
 func (f *fakeImageReportRepo) RequestSeries(context.Context, ImageReportSeriesFilter) ([]ImageRequestBucket, error) {
 	return f.reqBuckets, nil
@@ -56,13 +62,45 @@ func (f *fakeConcurrency) GetAccountConcurrencyBatch(_ context.Context, ids []in
 func TestBuildSeriesFilterNormalizes(t *testing.T) {
 	s := newOperationImageReportServiceForTest(&fakeImageReportRepo{}, &fakeConcurrency{})
 	now := time.Date(2025, 1, 2, 10, 0, 0, 0, time.UTC)
-	f := s.BuildSeriesFilter("GEMINI", "  m  ", nil, "garbage", "Bad/Zone", now)
+	f := s.BuildSeriesFilter("GEMINI", "  m  ", nil, nil, "garbage", "Bad/Zone", now)
 	require.Equal(t, OperationPlatformGemini, f.Platform)
 	require.Equal(t, "m", f.Model)
 	require.Equal(t, "1h", f.Bucket)
 	require.Equal(t, "UTC", f.TZ)
 	require.Equal(t, now, f.End)
 	require.Equal(t, now.Add(-24*time.Hour), f.Start)
+	require.Nil(t, f.GroupID)
+	require.Nil(t, f.UserID)
+}
+
+func TestBuildSeriesFilterCarriesGroupAndUser(t *testing.T) {
+	s := newOperationImageReportServiceForTest(&fakeImageReportRepo{}, &fakeConcurrency{})
+	groupID, userID := int64(33), int64(244)
+	f := s.BuildSeriesFilter("openai", "gpt-image-2", &groupID, &userID, "5m", "Asia/Shanghai", time.Now())
+	require.NotNil(t, f.GroupID)
+	require.Equal(t, groupID, *f.GroupID)
+	require.NotNil(t, f.UserID)
+	require.Equal(t, userID, *f.UserID)
+	require.Equal(t, "5m", f.Bucket)
+}
+
+// 分段耗时曲线是定责用的：upstream 高说明上游/我们慢，response 高说明客户端
+// 下载慢。这里确认筛选条件（尤其 UserID）原样透传到仓储，否则按用户检索会失效。
+func TestStageLatencySeriesPassesFilterThrough(t *testing.T) {
+	userID := int64(244)
+	repo := &fakeImageReportRepo{stageBuckets: []ImageStageLatencyBucket{{Count: 7}}}
+	s := newOperationImageReportServiceForTest(repo, &fakeConcurrency{})
+
+	got, err := s.StageLatencySeries(context.Background(), ImageReportSeriesFilter{
+		Platform: OperationPlatformOpenAI,
+		UserID:   &userID,
+		Bucket:   "1h",
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, int64(7), got[0].Count)
+	require.NotNil(t, repo.lastFilter.UserID)
+	require.Equal(t, userID, *repo.lastFilter.UserID)
 }
 
 func TestRequestSeriesComputesSuccessRate(t *testing.T) {

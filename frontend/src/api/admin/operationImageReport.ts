@@ -30,6 +30,17 @@ export interface LatencyBucket {
   max_ms: number | null
   avg_ms: number | null
 }
+/** 「上游生成 vs 回传客户端」分段耗时分位数（单位 ms，无数据为 null）。 */
+export interface StageLatencyBucket {
+  bucket_start: string
+  count: number
+  upstream_p50_ms: number | null
+  upstream_p90_ms: number | null
+  upstream_p95_ms: number | null
+  response_p50_ms: number | null
+  response_p90_ms: number | null
+  response_p95_ms: number | null
+}
 export interface RequestBucket {
   bucket_start: string
   success_count: number
@@ -52,6 +63,7 @@ export interface SeriesParams {
   platform?: string
   model?: string
   group_id?: number
+  user_id?: number
   bucket?: '5m' | '1h'
   tz?: string
 }
@@ -69,6 +81,10 @@ const operationImageReportAPI = {
   },
   async latencySeries(params: SeriesParams): Promise<{ buckets: LatencyBucket[] }> {
     const { data } = await apiClient.get<{ buckets: LatencyBucket[] }>(`${base}/latency-series`, { params })
+    return data
+  },
+  async stageLatencySeries(params: SeriesParams): Promise<{ buckets: StageLatencyBucket[] }> {
+    const { data } = await apiClient.get<{ buckets: StageLatencyBucket[] }>(`${base}/stage-latency-series`, { params })
     return data
   },
   async requestSeries(params: SeriesParams): Promise<{ buckets: RequestBucket[] }> {

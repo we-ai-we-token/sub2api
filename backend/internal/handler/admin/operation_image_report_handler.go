@@ -18,8 +18,9 @@ func NewOperationImageReportHandler(svc *service.OperationImageReportService) *O
 	return &OperationImageReportHandler{svc: svc}
 }
 
-func (h *OperationImageReportHandler) parseGroupID(c *gin.Context) *int64 {
-	raw := strings.TrimSpace(c.Query("group_id"))
+// parseQueryInt64 解析可选的整型查询参数；缺省或非法时返回 nil（不筛选）。
+func (h *OperationImageReportHandler) parseQueryInt64(c *gin.Context, key string) *int64 {
+	raw := strings.TrimSpace(c.Query(key))
 	if raw == "" {
 		return nil
 	}
@@ -31,7 +32,11 @@ func (h *OperationImageReportHandler) parseGroupID(c *gin.Context) *int64 {
 }
 
 func (h *OperationImageReportHandler) seriesFilter(c *gin.Context) service.ImageReportSeriesFilter {
-	return h.svc.BuildSeriesFilter(c.Query("platform"), c.Query("model"), h.parseGroupID(c), c.Query("bucket"), c.Query("tz"), time.Now())
+	return h.svc.BuildSeriesFilter(
+		c.Query("platform"), c.Query("model"),
+		h.parseQueryInt64(c, "group_id"), h.parseQueryInt64(c, "user_id"),
+		c.Query("bucket"), c.Query("tz"), time.Now(),
+	)
 }
 
 // GET /admin/operation/image-report/overview
@@ -57,6 +62,17 @@ func (h *OperationImageReportHandler) Concurrency(c *gin.Context) {
 // GET /admin/operation/image-report/latency-series
 func (h *OperationImageReportHandler) LatencySeries(c *gin.Context) {
 	data, err := h.svc.LatencySeries(c.Request.Context(), h.seriesFilter(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"buckets": data})
+}
+
+// StageLatencySeries 返回上游生成 / 回传客户端两段耗时的分位数曲线。
+// GET /admin/operation/image-report/stage-latency-series
+func (h *OperationImageReportHandler) StageLatencySeries(c *gin.Context) {
+	data, err := h.svc.StageLatencySeries(c.Request.Context(), h.seriesFilter(c))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

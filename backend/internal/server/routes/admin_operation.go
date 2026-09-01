@@ -13,6 +13,7 @@ func registerAdminOperationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		op.GET("/overview", h.Admin.OperationImageReport.Overview)
 		op.GET("/concurrency", h.Admin.OperationImageReport.Concurrency)
 		op.GET("/latency-series", h.Admin.OperationImageReport.LatencySeries)
+		op.GET("/stage-latency-series", h.Admin.OperationImageReport.StageLatencySeries)
 		op.GET("/request-series", h.Admin.OperationImageReport.RequestSeries)
 		op.GET("/filters", h.Admin.OperationImageReport.Filters)
 	}

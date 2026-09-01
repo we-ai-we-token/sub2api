@@ -14,6 +14,9 @@
 
       <!-- Filter bar -->
       <div class="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <!-- User -->
+        <UserSearchSelect v-model="filters.user_id" @change="onFilterChange" />
+
         <!-- Platform -->
         <div class="flex items-center gap-2">
           <label class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.operation.imageReport.platform') }}</label>
@@ -70,6 +73,7 @@
       <!-- Charts: each full-width on its own row -->
       <div class="space-y-6">
         <RequestVolumeChart :buckets="requestBuckets" :bucket="filters.bucket" />
+        <StageLatencyChart :buckets="stageBuckets" :bucket="filters.bucket" />
         <LatencyChart :buckets="latencyBuckets" :bucket="filters.bucket" />
       </div>
 
@@ -84,11 +88,20 @@ import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import operationImageReportAPI from '@/api/admin/operationImageReport'
-import type { ConcurrencyOverview, LatencyBucket, RequestBucket, TodayItem, FilterOptions } from '@/api/admin/operationImageReport'
+import type {
+  ConcurrencyOverview,
+  LatencyBucket,
+  StageLatencyBucket,
+  RequestBucket,
+  TodayItem,
+  FilterOptions
+} from '@/api/admin/operationImageReport'
 import ConcurrencyCards from './components/ConcurrencyCards.vue'
 import TodayBreakdown from './components/TodayBreakdown.vue'
 import LatencyChart from './components/LatencyChart.vue'
+import StageLatencyChart from './components/StageLatencyChart.vue'
 import RequestVolumeChart from './components/RequestVolumeChart.vue'
+import UserSearchSelect from './components/UserSearchSelect.vue'
 
 const { t } = useI18n()
 
@@ -98,17 +111,20 @@ const filters = reactive<{
   platform: string
   model: string
   group_id: number | undefined
+  user_id: number | undefined
   bucket: '5m' | '1h'
 }>({
   platform: 'openai',
   model: '',
   group_id: undefined,
+  user_id: undefined,
   bucket: '1h'
 })
 
 const overview = ref<ConcurrencyOverview | null>(null)
 const todayItems = ref<TodayItem[]>([])
 const latencyBuckets = ref<LatencyBucket[]>([])
+const stageBuckets = ref<StageLatencyBucket[]>([])
 const requestBuckets = ref<RequestBucket[]>([])
 const filterOptions = ref<FilterOptions>({ models: [], groups: [] })
 
@@ -117,39 +133,45 @@ function buildSeriesParams() {
   if (filters.platform) params.platform = filters.platform
   if (filters.model) params.model = filters.model
   if (filters.group_id !== undefined) params.group_id = filters.group_id
+  if (filters.user_id !== undefined) params.user_id = filters.user_id
   if (filters.bucket) params.bucket = filters.bucket
   return params as Parameters<typeof operationImageReportAPI.latencySeries>[0]
 }
 
 async function fetchSeries() {
   const params = buildSeriesParams()
-  const [latency, request, ov] = await Promise.all([
+  const [latency, stage, request, ov] = await Promise.all([
     operationImageReportAPI.latencySeries(params),
+    operationImageReportAPI.stageLatencySeries(params),
     operationImageReportAPI.requestSeries(params),
     operationImageReportAPI.overview(tz)
   ])
   latencyBuckets.value = latency.buckets
+  stageBuckets.value = stage.buckets
   requestBuckets.value = request.buckets
   todayItems.value = ov.today
 }
 
 async function fetchInitial() {
-  const [conc, ov, fo, latency, request] = await Promise.all([
+  const [conc, ov, fo, latency, stage, request] = await Promise.all([
     operationImageReportAPI.concurrency(),
     operationImageReportAPI.overview(tz),
     operationImageReportAPI.filters(filters.platform),
     operationImageReportAPI.latencySeries(buildSeriesParams()),
+    operationImageReportAPI.stageLatencySeries(buildSeriesParams()),
     operationImageReportAPI.requestSeries(buildSeriesParams())
   ])
   overview.value = conc
   todayItems.value = ov.today
   filterOptions.value = fo
   latencyBuckets.value = latency.buckets
+  stageBuckets.value = stage.buckets
   requestBuckets.value = request.buckets
 }
 
 async function onPlatformChange() {
-  // Reset platform-specific filters to avoid stale values from previous platform
+  // Reset platform-specific filters to avoid stale values from previous platform.
+  // user_id 不清：按用户排查时通常要在 openai/gemini 之间来回切着看。
   filters.model = ''
   filters.group_id = undefined
   filterOptions.value = await operationImageReportAPI.filters(filters.platform)

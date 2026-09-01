@@ -35,7 +35,7 @@ func TestOperationImageReportRequestSeries(t *testing.T) {
 	b0 := time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery("FROM usage_logs ul").
-		WithArgs("1 hour", "UTC", start, end, "", nil).
+		WithArgs("1 hour", "UTC", start, end, "", nil, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket_start", "success_count", "failure_count"}).
 			AddRow(b0, int64(8), int64(2)))
 
@@ -57,14 +57,15 @@ func TestOperationImageReportLatencySeries(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	b0 := time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC)
 	gid := int64(7)
+	uid := int64(244)
 
 	mock.ExpectQuery("percentile_cont").
-		WithArgs("5 minutes", "Asia/Shanghai", start, end, "gpt-image-2", gid).
+		WithArgs("5 minutes", "Asia/Shanghai", start, end, "gpt-image-2", gid, uid).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket_start", "cnt", "min_ms", "p25_ms", "p50_ms", "p75_ms", "max_ms", "avg_ms"}).
 			AddRow(b0, int64(4), 100.0, 120.0, 150.0, 200.0, 400.0, 180.0))
 
 	got, err := repo.LatencySeries(context.Background(), service.ImageReportSeriesFilter{
-		Platform: service.OperationPlatformOpenAI, Model: "gpt-image-2", GroupID: &gid,
+		Platform: service.OperationPlatformOpenAI, Model: "gpt-image-2", GroupID: &gid, UserID: &uid,
 		Bucket: "5m", TZ: "Asia/Shanghai", Start: start, End: end,
 	})
 	require.NoError(t, err)
@@ -72,6 +73,39 @@ func TestOperationImageReportLatencySeries(t *testing.T) {
 	require.Equal(t, int64(4), got[0].Count)
 	require.NotNil(t, got[0].P50Ms)
 	require.Equal(t, 150.0, *got[0].P50Ms)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// 分段耗时曲线读 image_generation_records（而不是 usage_logs），且必须把
+// platform 作为最后一个绑定参数下推——写错参数顺序会静默返回空曲线。
+func TestOperationImageReportStageLatencySeries(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &operationImageReportRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	b0 := time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC)
+	uid := int64(244)
+
+	mock.ExpectQuery("FROM image_generation_records").
+		WithArgs("1 hour", "UTC", start, end, "", nil, uid, service.OperationPlatformOpenAI).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"bucket_start", "cnt",
+			"upstream_p50", "upstream_p90", "upstream_p95",
+			"response_p50", "response_p90", "response_p95",
+		}).AddRow(b0, int64(17), 28500.0, 45000.0, 49000.0, 22000.0, 150000.0, 172500.0))
+
+	got, err := repo.StageLatencySeries(context.Background(), service.ImageReportSeriesFilter{
+		Platform: service.OperationPlatformOpenAI, UserID: &uid,
+		Bucket: "1h", TZ: "UTC", Start: start, End: end,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, int64(17), got[0].Count)
+	require.NotNil(t, got[0].UpstreamP50)
+	require.Equal(t, 28500.0, *got[0].UpstreamP50)
+	require.NotNil(t, got[0].ResponseP95)
+	require.Equal(t, 172500.0, *got[0].ResponseP95)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

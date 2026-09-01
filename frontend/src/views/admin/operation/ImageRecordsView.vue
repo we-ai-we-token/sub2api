@@ -8,6 +8,8 @@
 
       <!-- Filter bar -->
       <div class="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <UserSearchSelect v-model="filters.userId" @change="applyFilters" />
+
         <div class="flex items-center gap-2">
           <label class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.operation.imageRecords.filterTimeRange') }}</label>
           <select v-model="filters.rangeHours" class="filter-select" @change="applyFilters">
@@ -78,6 +80,7 @@
               <th class="th-cell">{{ t('admin.operation.imageRecords.colStatus') }}</th>
               <th class="th-cell text-right">{{ t('admin.operation.imageRecords.colTotal') }}</th>
               <th class="th-cell text-right">{{ t('admin.operation.imageRecords.colUpstream') }}</th>
+              <th class="th-cell text-right">{{ t('admin.operation.imageRecords.colResponse') }}</th>
               <th class="th-cell text-right">{{ t('admin.operation.imageRecords.colQueue') }}</th>
               <th class="th-cell text-center">{{ t('admin.operation.imageRecords.colRetries') }}</th>
               <th class="th-cell">{{ t('admin.operation.imageRecords.colImages') }}</th>
@@ -109,6 +112,12 @@
                 </td>
                 <td class="td-cell text-right font-mono">{{ formatMs(record.total_ms) }}</td>
                 <td class="td-cell text-right font-mono">{{ formatMs(record.upstream_ms) }}</td>
+                <td
+                  class="td-cell text-right font-mono"
+                  :class="{ 'font-semibold text-red-600 dark:text-red-400': (record.response_ms ?? 0) >= 60_000 }"
+                >
+                  {{ formatMs(record.response_ms) }}
+                </td>
                 <td class="td-cell text-right font-mono">{{ formatMs(queueWaitMs(record)) }}</td>
                 <td class="td-cell text-center">
                   <span :class="{ 'font-semibold text-amber-600 dark:text-amber-400': record.account_switches > 0 || record.attempts > 1 }">
@@ -128,7 +137,7 @@
                 </td>
               </tr>
               <tr v-if="expandedId === record.id" class="border-t border-gray-100 bg-gray-50/50 dark:border-dark-700 dark:bg-dark-900/30">
-                <td class="td-cell" colspan="11">
+                <td class="td-cell" colspan="12">
                   <div class="space-y-3 py-1">
                     <div>
                       <div class="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{{ t('admin.operation.imageRecords.detailTimings') }}</div>
@@ -183,7 +192,7 @@
               </tr>
             </template>
             <tr v-if="!loading && records.length === 0">
-              <td class="td-cell py-10 text-center text-gray-400" colspan="11">{{ t('admin.operation.imageRecords.noData') }}</td>
+              <td class="td-cell py-10 text-center text-gray-400" colspan="12">{{ t('admin.operation.imageRecords.noData') }}</td>
             </tr>
           </tbody>
         </table>
@@ -207,6 +216,7 @@ import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import UserSearchSelect from './components/UserSearchSelect.vue'
 import imageGenerationRecordsAPI from '@/api/admin/imageGenerationRecords'
 import type { ImageGenerationRecord, ImageGenerationRecordListParams } from '@/api/admin/imageGenerationRecords'
 
@@ -218,12 +228,14 @@ const filters = reactive<{
   success: '' | 'true' | 'false'
   model: string
   minTotalMs: number | ''
+  userId: number | undefined
 }>({
   rangeHours: 24,
   platform: '',
   success: '',
   model: '',
-  minTotalMs: ''
+  minTotalMs: '',
+  userId: undefined
 })
 
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -241,6 +253,7 @@ function buildParams(): ImageGenerationRecordListParams {
   if (filters.success) params.success = filters.success === 'true'
   if (filters.model) params.model = filters.model
   if (typeof filters.minTotalMs === 'number' && filters.minTotalMs > 0) params.min_total_ms = filters.minTotalMs
+  if (filters.userId !== undefined) params.user_id = filters.userId
   return params
 }
 
