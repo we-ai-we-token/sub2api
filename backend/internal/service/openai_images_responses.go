@@ -67,6 +67,13 @@ type OpenAIImagesUpstreamError struct {
 	Message           string
 	Param             string
 	UpstreamRequestID string
+
+	// SynthesizedFromModelText marks an error the gateway inferred from the
+	// model's plain-text output instead of reading it off a structured upstream
+	// error frame. Such a verdict describes this one turn ("the model answered
+	// with words instead of an image"), not the account — see
+	// shouldCoolOpenAIImagesToolForError.
+	SynthesizedFromModelText bool
 }
 
 func (e *OpenAIImagesUpstreamError) Error() string {
@@ -707,6 +714,10 @@ func openAIImagesTextFallbackErrorForText(text string) *OpenAIImagesUpstreamErro
 		ErrorType:  "upstream_error",
 		Code:       "image_generation_unavailable",
 		Message:    "Upstream did not execute image generation",
+		// Inferred from the model's own words, not from an upstream error frame:
+		// good enough to fail this turn over to another account, not evidence that
+		// this account's image tool is down for the next 30 minutes.
+		SynthesizedFromModelText: true,
 	}
 }
 
