@@ -44,9 +44,11 @@ git remote add upstream <upstream-repository-url>
 ### Recurring merge conflicts
 
 - **`backend/ent` generated code** (`group.go`, `mutation.go`, `runtime/runtime.go`, …): do not hand-merge. Take upstream's generated code with `git checkout v0.1.x -- backend/ent`, restore the merged `backend/ent/schema/`, then regenerate with `GOPROXY=https://goproxy.cn,direct go generate ./ent` (`proxy.golang.org` is unreachable here).
+  **重生成会污染 go.sum**：`ent/generate.go` 的 directive 自带 `-mod=mod`，`go generate ./ent` 会把 ent 代码生成器自己的依赖（`spf13/cobra`、`olekukonko/tablewriter`、`mattn/go-runewidth`、`rivo/uniseg`）写进 `backend/go.sum`。它不是冲突、`git status` 里只是一行不起眼的 ` M backend/go.sum`，`go build` / `go vet` / 单测全部看不出来，跟着提交就把构建依赖清单污染了。重生成后固定动作：`git checkout -- backend/go.sum` 回滚，再跑 `go mod tidy` 确认无 diff。
 - **`backend/go.sum`**: take upstream's side, then confirm `go mod tidy` produces no diff before committing.
 - **`backend/internal/handler/openai_images_failover_test.go`**: intentionally deleted locally (the local retry logic diverges and the upstream test breaks CI). Keep it deleted with `git rm` when it conflicts.
 - **`usage_logs` column lists** (`usage_log_repo_query.go` / `usage_log_repo_insert.go`): the local fork adds an `image_quality` column. Keep both sides' columns, and keep the `SELECT` column order identical to the `scanner.Scan` field order. **Trap**: `usage_log_repo_insert.go` has two static `$1..$N` VALUES lists. When both sides add a column, each bumps `$56→$57` independently and git auto-merges "cleanly" one placeholder short. After every merge, verify: static placeholder count == column count == `len(usageLogInsertArgTypes)`. The batch path is generated dynamically and is not affected. **2026-09-02 起这条已有回归测试兜底**：`backend/internal/repository/usage_log_insert_placeholder_unit_test.go` 直接读源码断言两处静态 `$1..$N` 与 `usageLogInsertArgTypes` 等长且连续，跑 `go test -tags unit ./internal/repository/` 就会炸。放在独立文件里是为了不跟上游抢同一个测试文件。
+- **二开给 `Group` 加字段时，别漏 `cloneGroupForDuplicate`**（`backend/internal/service/admin_group_duplicate.go`）：该函数跟上游保持字节一致，二开新增字段漏拷没有任何编译期提示；而 `groupRepository.CreateFromSource` 是**无条件 `Set`** 的，漏拷 = 按零值写库——`image_use_responses_api` 的 schema 默认值 true 会被复制出来的分组静默写成 false，OAuth 生图直接换一条链路。**2026-09-05 起已有回归测试兜底**：`backend/internal/service/admin_group_duplicate_fork_fields_unit_test.go`，同样独立成文件以免跟上游抢 `admin_group_duplicate_test.go`。顺带记一笔：上游自己也漏拷了 `LongContextPricingEnabled` 和 `ModelPricing`，那是上游的坑，没跟着改。
 - **上游用例硬编码 arg 下标**：合 v0.1.185 时 `TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring` 写死了 `usageLogInsertArgTypes[47]/[48]` 和 `prepared.args[47]/[48]`，那是上游列序。我方 `image_quality` 在下标 42，把它后面所有列整体后移一位，正确值是 **48/49**。这类下标断言以后每次上游加列都要重算——用 `INSERT INTO usage_logs (...)` 的列清单 `.index(列名)` 算，别手数。
 - **`backend/internal/repository/group_usage_rollup_trigger_integration_test.go`**: 本地补丁 v0.1.177 起存在、**v0.1.183 已撤销**——上游 `1bff06ea5` 用更好的方式修好了：给写入事务显式 `SET LOCAL TIME ZONE 'Asia/Shanghai'`，触发器的 `current_setting('TimeZone')` 因此和断言里硬编码的 `'Asia/Shanghai'` 对齐。现在整份文件跟上游一致，不要再把 `'Asia/Shanghai'` 换成 `current_setting('TimeZone')`。**血的教训**：v0.1.183 合并时两侧改的是不同的行，git 干净地把上游的 `SET LOCAL TIME ZONE`（写入事务 = Shanghai）和我方的 `current_setting('TimeZone')`（seed/sync/断言 = 会话 UTC）拼在了一起，`SerializesInsertTransactionAcrossMidnight` 变成跨两个时区，UTC 16:00–24:00（北京时间 0–8 点）之外照样绿，只在那个窗口挂——本机 08:00 跑集成测试全绿、推上去 CI 在 UTC 18:52 才炸。**时区相关的测试改动，验证要挑 UTC 16:00–24:00 这个窗口跑一遍**（本机 `date -u` 确认），否则等于没验。
 - **OAuth 生图相关文件（`openai_images_responses.go` / `openai_images_test.go`）**: 二开把 `buildOpenAIImagesResponsesRequest`、`openAIImageUploadToDataURL`、`shouldPassOpenAIImagesN`、`openAIImagesUpstreamErrorResponseBody`、`handleOpenAIImagesOAuthResponseError`、`forwardOpenAIImagesOAuthResponses` 搬到了 `openai_images_responses_upstream.go`，两侧文件结构差太多，git 三方合并会把上游 hunk 对到完全不相干的位置（冲突块一侧几十行、另一侧一行）。**不要硬啃冲突块**，改用「以我方为底 + 重放上游本文件 diff」：
@@ -89,10 +91,11 @@ GOFLAGS=-mod=mod go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 # frontend
 cd frontend
 npx pnpm@9 install --frozen-lockfile
-npx pnpm@9 typecheck && npx pnpm@9 test:run
+npx pnpm@9 run lint:check && npx pnpm@9 typecheck && npx pnpm@9 test:run
 ```
 
 - Use **pnpm 9** (what CI uses). pnpm 11 no longer reads the `pnpm.overrides` field in `package.json`, so `--frozen-lockfile` fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, and it will rewrite `pnpm-lock.yaml` and drop a stray `pnpm-workspace.yaml` — never commit those.
 - vitest exits non-zero on Unhandled Errors even when every test passes; check the exit code, not just the summary line.
+- CI 跑的是 `make test-frontend` = `lint:check`（eslint）+ `typecheck` + 关键用例，**别漏了 `lint:check`**：typecheck 和 vitest 都不跑 eslint 规则。仓库没装 prettier，也没有 prettier 检查，不要用 `npx prettier --check` 判定前端格式（外部版本对存量文件本来就一片报警）。
 
 Keep `main` clean so it remains easy to compare with upstream.
