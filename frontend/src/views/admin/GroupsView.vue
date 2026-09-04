@@ -6314,6 +6314,11 @@ const handleCreateGroup = async () => {
     requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
     requestData.image_price_2k = emptyToNull(requestData.image_price_2k);
     requestData.image_price_4k = emptyToNull(requestData.image_price_4k);
+    requestData.image_price_low = emptyToNull(requestData.image_price_low);
+    requestData.image_price_medium = emptyToNull(
+      requestData.image_price_medium,
+    );
+    requestData.image_price_high = emptyToNull(requestData.image_price_high);
     requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
     requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
     requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
@@ -6622,6 +6627,9 @@ const handleUpdateGroup = async () => {
     payload.image_price_1k = emptyPriceToClear(payload.image_price_1k);
     payload.image_price_2k = emptyPriceToClear(payload.image_price_2k);
     payload.image_price_4k = emptyPriceToClear(payload.image_price_4k);
+    payload.image_price_low = emptyPriceToClear(payload.image_price_low);
+    payload.image_price_medium = emptyPriceToClear(payload.image_price_medium);
+    payload.image_price_high = emptyPriceToClear(payload.image_price_high);
     payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
     payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
     payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
