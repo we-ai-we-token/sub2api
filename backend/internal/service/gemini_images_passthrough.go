@@ -141,7 +141,7 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	usage, imageCount, outputSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+	usage, imageCount, outputSizes, err := s.handleOpenAIImagesNonStreamingResponse(ctx, resp, c, account, parsed)
 	if err != nil {
 		return nil, err
 	}

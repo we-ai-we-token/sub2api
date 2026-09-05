@@ -140,6 +140,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
 	FieldModelsListConfig = "models_list_config"
+	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
+	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
 	// FieldImageUseResponsesAPI holds the string denoting the image_use_responses_api field in the database.
 	FieldImageUseResponsesAPI = "image_use_responses_api"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
@@ -293,6 +295,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
+	FieldCodexModelsManifestConfig,
 	FieldImageUseResponsesAPI,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
@@ -428,6 +431,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
 	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
+	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
 	// DefaultImageUseResponsesAPI holds the default value on creation for the "image_use_responses_api" field.
 	DefaultImageUseResponsesAPI bool
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
