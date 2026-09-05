@@ -151,6 +151,7 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 	}
 	return &OpenAIForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
+		UpstreamHeaders:  resp.Header,
 		Usage:            usage,
 		Model:            requestModel,
 		UpstreamModel:    upstreamModel,

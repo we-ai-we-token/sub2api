@@ -1864,6 +1864,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	c.Data(statusCode, "application/json; charset=utf-8", responseBody)
 	return &OpenAIForwardResult{
 		RequestID:        output.RequestID,
+		UpstreamHeaders:  output.ResponseHeaders,
 		Usage:            output.Usage,
 		Model:            output.UpstreamModel,
 		UpstreamModel:    output.UpstreamModel,
@@ -2164,6 +2165,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 				if imageCount > 0 {
 					return &OpenAIForwardResult{
 						RequestID:        resp.Header.Get("x-request-id"),
+						UpstreamHeaders:  resp.Header,
 						Usage:            usage,
 						Model:            requestModel,
 						UpstreamModel:    requestModel,
@@ -2198,6 +2200,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 		}
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    requestModel,
