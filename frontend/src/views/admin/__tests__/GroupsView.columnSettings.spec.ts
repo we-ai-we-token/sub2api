@@ -63,7 +63,6 @@ vi.mock('@/api/admin', () => ({
       update: vi.fn(),
       delete: vi.fn(),
       updateSortOrder: vi.fn(),
-      getLiveCapability: vi.fn(async () => ({ supported: false })),
     },
     accounts: {
       list: listAccounts,

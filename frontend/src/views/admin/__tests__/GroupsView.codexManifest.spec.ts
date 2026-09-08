@@ -48,6 +48,13 @@ vi.mock("@/stores/app", () => ({
   }),
 }));
 
+// 二开本地补丁：GroupsView 的 setup 里 `useAuthStore()` 是顶层调用，
+// 上游这份用例没有 mock @/stores/auth 也没装 pinia，裸跑必炸（上游 CI 的
+// FRONTEND_CRITICAL_VITEST 白名单没收这个文件，所以上游没暴露）。
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: () => ({ isSimpleMode: false }),
+}));
+
 vi.mock("@/stores/onboarding", () => ({
   useOnboardingStore: () => ({
     isCurrentStep: vi.fn(() => false),
