@@ -68,6 +68,19 @@ git remote add upstream <upstream-repository-url>
 - **上游新增的生图用例走错链路**: 二开按 `Group.ImageUseResponsesAPI`（DB 列默认 true）给 OAuth 生图分流，裸 `gin.Context` 无分组会退化到二开专用 codex images 端点，上游用例的 URL/failover 断言全部落空。补一行让它像线上一样走 Responses 链路：`c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})`。
 - **`handleOpenAIImagesOAuthNonStreamingResponse` / `...StreamingResponse`**: 二开多一个末位 `retryableEmptyOutput bool` 形参，上游新增用例按上游签名调用会编译失败，补 `false`（沿用上游不做空输出重试的语义）。
 - **gofmt 对齐**: 双方各自往同一个结构体字面量加字段时，auto-merge 出来的字段名列宽不再是 gofmt 结果，CI 的 golangci-lint gofmt formatter 会报错，但 `go build`/`go vet` 都看不出来。每次合并后跑一遍 `gofmt -l ./cmd ./internal ./pkg`。
+- **上游把结构体字面量的字段「整块搬家」= git 干净地整块删掉**（v0.2.3 实战，本轮最危险的一处）：`service/admin_group.go` 的 `CreateGroup` 里，上游把 `RPMLimit` / `MaxReasoningEffort` / `MaxReasoningEffortOverLimit` / `ReasoningEffortMappings` 从 `ModelsListConfig` 之后整块搬到了 `CodexModelsManifestConfig` 之后；我方恰好在同一位置插了 `ImageUseResponsesAPI`。冲突块只呈现「HEAD 侧 6 行 vs 上游侧 1 行」，**搬到后面去的那 4 行既不在冲突块里、也没出现在合并结果中**——照着冲突块二选一/两边都留，就把这 4 个字段永久丢了。Go 的 struct 字面量少字段合法，`go build` / `go vet` / golangci-lint / 单测全部沉默，线上表现是新建分组的 RPM 限流与 reasoning effort 策略静默按零值走。**收尾固定动作**：每解完一个 struct 字面量冲突，拿 `git show <tag>:<file>` 里同一个字面量的字段清单跟合并结果逐字段对一遍，别只看冲突块。
+- **全局兜底检查（比逐文件读 diff 便宜且更可靠）**：合并后（提交前）跑这两条，任何一条有输出都说明合丢了东西。
+  ```bash
+  # A. 上游改过、但合并结果却等于 merge base 的文件 = 上游改动被整份吃掉
+  for f in $(git diff --name-only <prev-tag> <new-tag>); do [ -f "$f" ] || continue; b=$(git rev-parse "<prev-tag>:$f" 2>/dev/null); w=$(git hash-object "$f"); [ -n "$b" ] && [ "$b" = "$w" ] && echo "BASE-REVERT $f"; done
+  # B. 逐文件确认合并结果相对上游「只增不减」（二开有意删除的文件先排除）
+  for f in <overlapping files>; do n=$(git diff <new-tag> -- "$f" | grep -c '^-[^-]'); [ "$n" -gt 0 ] && echo "$f 少了 $n 行上游代码"; done
+  ```
+  B 是抓「搬家丢块」的最好工具：admin_group.go 那处修好之前，B 就能把它点出来。反向的 `git diff <prev-tag> HEAD` 逐文件比对可以抓二开改动被吃掉的情况（v0.2.3 这轮报出 4 个测试文件，全是双方各自做了同一处 gofmt 对齐，属误报）。
+- **`models_list_config` → `model_allowlist` 改名（v0.2.2/v0.2.3）**：上游把分组「模型列表配置」升级成分组级模型白名单（既过滤模型列表接口，也在合成路由改写与调度之前做请求准入），删掉 `domain/models_list_config.go`、`service/group_models_list.go`、`frontend/.../groupsModelsList.ts`，迁移 235/236 负责改列名，`apiKeyAuthSnapshotVersion` 升到 24。二开贴着这个字段加的 `image_use_responses_api` 会跟每一处改名撞车（v0.2.3 的 11 个冲突里有 9 个是这个形状）：**一律解成「取上游那一行 + 保留我方 ImageUseResponsesAPI 那一行」**，别保留 `ModelsListConfig`。
+- **上游新增的 route 用例按上游 handler 构造函数 arity 调用**：v0.2.3 的 `routes/gateway_models_pinned_test.go` 调 `handler.NewGatewayHandler`（二开多 `imageGenerationRecordService`，共 16 个形参）和 `handler.NewOpenAIGatewayHandler`（二开多 `geminiCompatService` + `imageGenerationRecordService`，共 11 个形参），按上游写法编译不过，补 `nil` 即可。**注意 `go build ./...` 抓不到**（测试文件不参与 build），只有 `go vet ./...` 会炸——这就是验证清单里 vet 不能省的原因。
+- **上游前端用例在上游自己就是红的，别当成合并事故**：v0.2.3 新增的 `frontend/src/views/admin/__tests__/GroupsView.codexManifest.spec.ts` 既没 mock `@/stores/auth` 也没装 pinia，而 GroupsView 的 setup 顶层就调 `useAuthStore()`，`vitest run` 必炸。上游 CI 只跑 `Makefile` 里 `FRONTEND_CRITICAL_VITEST` 白名单，这个文件不在里面所以上游没暴露；我方验证清单跑全量 `test:run` 就会挂。**判定方法**：`git worktree add <tmp> <tag> && cd <tmp>/frontend && pnpm install && vitest run <该用例>`，在干净 tag 上跑一遍就知道是不是我们弄坏的。确认是上游问题后在本地补最小 mock，并单独提一个 commit。
+- **`vi.mock` 对象字面量里的重复 key = 上游断言变死代码**：二开往 `vi.mock('@/api/admin')` 里加 inline stub 时，如果该 key 上游已有 `vi.hoisted()` spy 简写，两行会并存且**后者覆盖前者**，组件拿到的是 inline stub，hoisted spy 永远零调用。于是上游后来新增的 `expect(<spy>).not.toHaveBeenCalled()` 恒真、`mockReset()` / `mockResolvedValue()` 全是空转，eslint 和 typecheck 都不报（只有 vite 的 `Duplicate key` warning，淹在输出里）。v0.2.3 在 `GroupsView.columnSettings.spec.ts` / `GroupsView.duplicate.spec.ts` 上真的发生了。**往 mock 里加 key 之前先 grep 同名 key**；判断某条 `not.toHaveBeenCalled()` 是不是空转，把用例前置条件反过来跑一遍，断言该失败而不失败就是空转。
 
 ### After the merge
 
