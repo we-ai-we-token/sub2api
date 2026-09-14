@@ -105,7 +105,8 @@ func TestForwardImages_AzureBaseURLStillHonorsForcedHTTP1(t *testing.T) {
 	_, err = svc.ForwardImages(context.Background(), c, azureAPIKeyAccount(), raw, parsed, "")
 	require.NoError(t, err)
 
-	upstream := svc.httpUpstream.(*httpUpstreamRecorder)
+	upstream, ok := svc.httpUpstream.(*httpUpstreamRecorder)
+	require.True(t, ok)
 	require.NotNil(t, upstream.lastReq)
 	// 与生产 ops_error_logs 里记录的 URL 完全一致
 	require.Equal(t,
@@ -128,7 +129,8 @@ func TestForwardImages_AzureBaseURLKeepsHTTP2WhenSwitchOff(t *testing.T) {
 	_, err = svc.ForwardImages(context.Background(), c, azureAPIKeyAccount(), raw, parsed, "")
 	require.NoError(t, err)
 
-	upstream := svc.httpUpstream.(*httpUpstreamRecorder)
+	upstream, ok := svc.httpUpstream.(*httpUpstreamRecorder)
+	require.True(t, ok)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, HTTPUpstreamProfileOpenAI,
 		HTTPUpstreamProfileFromContext(upstream.lastReq.Context()),
