@@ -123,15 +123,6 @@
                 </div>
               </template>
               <template v-else>{{ paidPerMillion(m.pricing?.input_price, period) }}</template>
-              <div
-                v-if="hasImageInputPricing(m)"
-                class="whitespace-nowrap text-xs leading-5"
-              >
-                <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{
-                  t('modelPlaza.table.imageInputShort')
-                }}</span>
-                {{ paidPerMillion(m.pricing?.image_input_price, period) }}
-              </div>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -212,15 +203,6 @@
                 <span class="ml-1 text-xs text-gray-400 dark:text-dark-500">{{ perUnitSuffix(m) }}</span>
               </template>
               <span v-else class="text-gray-400 dark:text-dark-500">-</span>
-              <div
-                v-if="hasImageInputPricing(m)"
-                class="mt-0.5 whitespace-nowrap font-mono text-xs leading-5 text-gray-800 dark:text-gray-200"
-              >
-                <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{
-                  t('modelPlaza.table.imageInputShort')
-                }}</span>
-                {{ paidPerMillion(m.pricing?.image_input_price, period) }}
-              </div>
             </td>
           </template>
 
@@ -385,14 +367,6 @@ const effectiveRate = computed(() => props.userRateMultiplier ?? props.rateMulti
 const hasCustomRate = computed(
   () => props.userRateMultiplier != null && props.userRateMultiplier !== props.rateMultiplier
 )
-
-// 只要有图片输入单价就展示，不区分计费模式——没有「这是生图模型」的标记位，
-// 有没有正的 image_input_price 本身就是最直接的判定
-// （与 components/channels/SupportedModelChip.vue:101 的既有做法一致）。
-function hasImageInputPricing(m: PlazaModel): boolean {
-  const price = m.pricing?.image_input_price
-  return price != null && price > 0
-}
 
 function billingMode(m: PlazaModel): BillingMode {
   return (m.pricing?.billing_mode || BILLING_MODE_TOKEN) as BillingMode

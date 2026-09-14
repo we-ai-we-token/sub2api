@@ -680,7 +680,6 @@ export default {
       cacheWrite: '写入',
       cacheRead: '读取',
       cacheWriteShort: '写',
-      imageInputShort: '图片输入',
       cacheReadShort: '读',
       tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
       tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
