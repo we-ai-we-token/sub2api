@@ -2102,7 +2102,9 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 
 func normalizeImagePriceTierOrDefault(tier string) string {
 	if quality := NormalizeOpenAIImageQualityOrEmpty(tier); quality != "" {
-		return quality
+		// xhigh/max 没有独立价格列，收敛到 high，避免 getImageUnitPrice 落空后
+		// 掉到固定默认单价、绕过分组配置。
+		return ImageQualityBillingTier(quality)
 	}
 	return NormalizeImageBillingTierOrDefault(tier)
 }

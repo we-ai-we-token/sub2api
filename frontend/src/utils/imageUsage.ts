@@ -65,9 +65,13 @@ export const formatImageBillingSize = (row: ImageUsageRow | null | undefined, t:
   return `${t('usage.imageSizeLegacyUnstandardized')}: ${size}`
 }
 
+// gpt-image-2.5-flare / gpt-image-2.5-sunburst 新增 xhigh / max 两档。
+// 漏掉它们的话，后端即使如实记录了，这里仍会显示「未记录」。
+const knownImageQualities = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+
 export const formatImageQuality = (row: ImageUsageRow | null | undefined, t: Translate): string => {
   const quality = trimmed(row?.image_quality).toLowerCase()
-  if (['low', 'medium', 'high'].includes(quality)) {
+  if (knownImageQualities.has(quality)) {
     return quality
   }
   return t('usage.imageQualityNotRecorded')
@@ -76,7 +80,7 @@ export const formatImageQuality = (row: ImageUsageRow | null | undefined, t: Tra
 export const formatImageBillingTier = (row: ImageUsageRow | null | undefined, t: Translate): string => {
   const tier = trimmed(row?.billing_tier)
   const normalizedQuality = tier.toLowerCase()
-  if (['low', 'medium', 'high'].includes(normalizedQuality)) {
+  if (knownImageQualities.has(normalizedQuality)) {
     return normalizedQuality
   }
   if (knownImageBillingSizes.has(tier)) {

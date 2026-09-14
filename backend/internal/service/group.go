@@ -189,7 +189,8 @@ func (g *Group) GetImagePrice(imageSize string) *float64 {
 		return g.ImagePriceLow
 	case "medium":
 		return g.ImagePriceMedium
-	case "high":
+	case "high", OpenAIImageQualityXHigh, OpenAIImageQualityMax:
+		// xhigh/max 无独立价格列，按 high 计价
 		return g.ImagePriceHigh
 	default:
 		// 未知尺寸默认按 2K 计费

@@ -14,6 +14,10 @@ const (
 	OpenAIImageQualityLow    = "low"
 	OpenAIImageQualityMedium = "medium"
 	OpenAIImageQualityHigh   = "high"
+	// gpt-image-2.5-flare / gpt-image-2.5-sunburst 新增的两档质量。
+	// 它们没有独立的价格列，计费时统一收敛到 high，见 ImageQualityBillingTier。
+	OpenAIImageQualityXHigh = "xhigh"
+	OpenAIImageQualityMax   = "max"
 
 	ImageSizeSourceOutput  = "output"
 	ImageSizeSourceInput   = "input"
@@ -80,9 +84,30 @@ func NormalizeOpenAIImageQualityOrEmpty(value string) string {
 		return OpenAIImageQualityMedium
 	case OpenAIImageQualityHigh:
 		return OpenAIImageQualityHigh
+	case OpenAIImageQualityXHigh:
+		return OpenAIImageQualityXHigh
+	case OpenAIImageQualityMax:
+		return OpenAIImageQualityMax
 	default:
 		return ""
 	}
+}
+
+// ImageQualityBillingTier 把质量收敛到「有价格列的那一档」。
+//
+// xhigh / max 是 gpt-image-2.5-* 新增的质量，没有对应的 image_price_* 列。
+// 若直接拿它们去查价，getImageUnitPrice 的 switch 会落空、掉到
+// getDefaultImagePrice 的固定单价，整个分组价格配置会被静默绕过。因此计费一律
+// 按 high 处理；记录用的 quality 仍保留真实值。
+//
+// 入参可以是质量，也可以是 1K/2K/4K 这类尺寸档；非质量值原样返回，交给调用方
+// 既有的尺寸分支处理。
+func ImageQualityBillingTier(value string) string {
+	switch NormalizeOpenAIImageQualityOrEmpty(value) {
+	case OpenAIImageQualityXHigh, OpenAIImageQualityMax:
+		return OpenAIImageQualityHigh
+	}
+	return value
 }
 
 func NormalizeOpenAIImageQualityOrLow(value string) string {

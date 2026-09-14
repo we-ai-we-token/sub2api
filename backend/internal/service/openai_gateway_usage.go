@@ -818,7 +818,8 @@ func resolveOpenAIGroupImageBillingDecision(apiKey *APIKey, result *OpenAIForwar
 	billingTier := sizeTier
 	if isOpenAIGroupImageQualityBillingEnabled(apiKey) {
 		quality = NormalizeOpenAIImageQualityOrLow(quality)
-		billingTier = quality
+		// quality 用于记录，保留 xhigh/max 原值；billingTier 用于查价，收敛到 high。
+		billingTier = ImageQualityBillingTier(quality)
 	}
 	return openAIImageBillingDecision{
 		SizeTier:    sizeTier,
