@@ -92,6 +92,7 @@ type modelPlazaLegacyModel struct {
 	OutputPrice      *float64                    `json:"output_price"`
 	CacheWritePrice  *float64                    `json:"cache_write_price"`
 	CacheReadPrice   *float64                    `json:"cache_read_price"`
+	ImageInputPrice  *float64                    `json:"image_input_price"`
 	ImageOutputPrice *float64                    `json:"image_output_price"`
 	PerRequestPrice  *float64                    `json:"per_request_price"`
 	ImageTiers       *modelPlazaLegacyImageTiers `json:"image_tiers"`
@@ -433,7 +434,8 @@ func modelHasPricingLegacy(p *service.ChannelModelPricing) bool {
 		return false
 	}
 	if p.InputPrice != nil || p.OutputPrice != nil || p.CacheWritePrice != nil ||
-		p.CacheReadPrice != nil || p.ImageOutputPrice != nil || p.PerRequestPrice != nil {
+		p.CacheReadPrice != nil || p.ImageInputPrice != nil || p.ImageOutputPrice != nil ||
+		p.PerRequestPrice != nil {
 		return true
 	}
 	for _, iv := range p.Intervals {
@@ -489,6 +491,7 @@ func toModelPlazaLegacyModel(
 		out.OutputPrice = p.OutputPrice
 		out.CacheWritePrice = p.CacheWritePrice
 		out.CacheReadPrice = p.CacheReadPrice
+		out.ImageInputPrice = p.ImageInputPrice
 		out.ImageOutputPrice = p.ImageOutputPrice
 	}
 	return out

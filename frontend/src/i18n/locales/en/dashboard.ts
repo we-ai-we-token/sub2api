@@ -635,6 +635,7 @@ export default {
       output: 'Output',
       cacheWrite: 'Cache Write',
       cacheRead: 'Cache Read',
+      imageInput: 'Image Input',
       imageOutput: 'Image Output'
     }
   },

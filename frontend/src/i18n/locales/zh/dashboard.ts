@@ -640,6 +640,7 @@ export default {
       output: '输出',
       cacheWrite: '缓存写',
       cacheRead: '缓存读',
+      imageInput: '图片输入',
       imageOutput: '图片输出'
     }
   },

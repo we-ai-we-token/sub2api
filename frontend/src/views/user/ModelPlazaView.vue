@@ -101,19 +101,20 @@
               <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.output') }}</th>
               <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.cacheWrite') }}</th>
               <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.cacheRead') }}</th>
+              <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.imageInput') }}</th>
               <th class="px-4 py-3 text-right">{{ t('modelPlazaLegacy.columns.imageOutput') }}</th>
             </tr>
           </thead>
           <tbody v-if="loading">
             <tr>
-              <td colspan="7" class="py-10 text-center">
+              <td colspan="8" class="py-10 text-center">
                 <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
               </td>
             </tr>
           </tbody>
           <tbody v-else-if="filteredModels.length === 0">
             <tr>
-              <td colspan="7" class="py-12 text-center">
+              <td colspan="8" class="py-12 text-center">
                 <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
                 <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('modelPlazaLegacy.empty') }}</p>
               </td>
@@ -147,7 +148,7 @@
               </td>
 
               <!-- 按次/图片计费：合并后续列，1K/2K/4K 彩色标签清晰区分各分辨率单价 -->
-              <td v-if="isPerRequest(m)" colspan="5" class="px-4 py-3">
+              <td v-if="isPerRequest(m)" colspan="6" class="px-4 py-3">
                 <div v-if="perRequestTiers(m).length > 0" class="flex flex-wrap items-center gap-2">
                   <span
                     v-for="tier in perRequestTiers(m)"
@@ -253,13 +254,14 @@ function isPerRequest(m: ModelPlazaModel): boolean {
 /** 倍率非 1 时才展示原价划线对比（倍率为 1 时折后价 == 原价，无需重复）。 */
 const showStrike = computed(() => tokenMultiplier.value !== 1)
 
-/** token 行 5 列原价：输入 / 输出 / 缓存写 / 缓存读 / 图片输出。 */
+/** token 行 6 列原价：输入 / 输出 / 缓存写 / 缓存读 / 图片输入 / 图片输出。 */
 function tokenCells(m: ModelPlazaModel): (number | null)[] {
   return [
     m.input_price,
     m.output_price,
     m.cache_write_price,
     m.cache_read_price,
+    m.image_input_price,
     m.image_output_price,
   ]
 }
