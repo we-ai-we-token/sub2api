@@ -459,6 +459,11 @@ gateway:
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
+  # tls_handshake_timeout_seconds: 上游 TLS 握手超时（秒），默认 10。
+  # 只约束「TCP/代理隧道已通、但 TLS 握手未完成」这一段。高 RTT 或轻度劣化的链路
+  # 可适当调大；但链路严重劣化时它是快速失败的熔断点——放大后请求会挂更久、
+  # 占住生图并发槽并推迟换号重试。
+  tls_handshake_timeout_seconds: 10
   # Upstream client cache settings
   # 上游连接池客户端缓存配置
   # max_upstream_clients: Max cached clients, evicts least recently used when exceeded

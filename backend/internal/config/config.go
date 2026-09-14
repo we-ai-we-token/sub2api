@@ -1029,6 +1029,11 @@ type GatewayConfig struct {
 	MaxConnsPerHost int `mapstructure:"max_conns_per_host"`
 	// IdleConnTimeoutSeconds: 空闲连接超时时间（秒）
 	IdleConnTimeoutSeconds int `mapstructure:"idle_conn_timeout_seconds"`
+	// TLSHandshakeTimeoutSeconds: 上游 TLS 握手超时时间（秒），默认 10。
+	// 只约束「TCP/代理隧道已通、但 TLS 握手未完成」这一段。调大能让高 RTT 或
+	// 轻度劣化的链路握手成功，但链路严重劣化时它是快速失败的熔断点——放大后
+	// 请求会挂更久、占住生图并发槽、并推迟换号重试。0 表示使用默认值。
+	TLSHandshakeTimeoutSeconds int `mapstructure:"tls_handshake_timeout_seconds"`
 	// MaxUpstreamClients: 上游连接池客户端最大缓存数量
 	// 当使用连接池隔离策略时，系统会为不同的账户/代理组合创建独立的 HTTP 客户端
 	// 此参数限制缓存的客户端数量，超出后会淘汰最久未使用的客户端
@@ -2481,10 +2486,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
-	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 1024)      // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
-	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
+	viper.SetDefault("gateway.max_idle_conns", 2560)         // 最大空闲连接总数（高并发场景可调大）
+	viper.SetDefault("gateway.max_idle_conns_per_host", 120) // 每主机最大空闲连接（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 1024)     // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
+	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90)
+	viper.SetDefault("gateway.tls_handshake_timeout_seconds", 10) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）

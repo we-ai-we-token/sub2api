@@ -113,6 +113,7 @@ type poolSettings struct {
 	maxConnsPerHost       int           // 每主机最大连接数（含活跃）
 	idleConnTimeout       time.Duration // 空闲连接超时时间
 	responseHeaderTimeout time.Duration // 等待响应头超时时间
+	tlsHandshakeTimeout   time.Duration // TLS 握手超时时间
 }
 
 type openAIHTTP2Settings struct {
@@ -937,12 +938,13 @@ func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, pr
 // buildPoolKey 构建连接池配置键，用于检测连接池配置变更。
 func buildPoolKey(settings poolSettings, protocolMode string) string {
 	base := fmt.Sprintf(
-		"idle:%d|idle_host:%d|max:%d|idle_timeout:%s|header_timeout:%s",
+		"idle:%d|idle_host:%d|max:%d|idle_timeout:%s|header_timeout:%s|tls_handshake:%s",
 		settings.maxIdleConns,
 		settings.maxIdleConnsPerHost,
 		settings.maxConnsPerHost,
 		settings.idleConnTimeout,
 		settings.responseHeaderTimeout,
+		settings.tlsHandshakeTimeout,
 	)
 	if protocolMode == "" || protocolMode == upstreamProtocolModeDefault {
 		return base
@@ -1275,12 +1277,23 @@ func normalizeProxyURL(raw string) (string, *url.URL, error) {
 //
 // 返回:
 //   - poolSettings: 连接池配置
+//
+// resolveTLSHandshakeTimeout 返回生效的 TLS 握手超时。settings 未携带时回落到
+// 包默认值——保证零值 poolSettings（测试里常见）不会退化成「无超时」。
+func resolveTLSHandshakeTimeout(settings poolSettings) time.Duration {
+	if settings.tlsHandshakeTimeout > 0 {
+		return settings.tlsHandshakeTimeout
+	}
+	return defaultUpstreamTLSHandshakeTimeout
+}
+
 func defaultPoolSettings(cfg *config.Config) poolSettings {
 	maxIdleConns := defaultMaxIdleConns
 	maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
 	maxConnsPerHost := defaultMaxConnsPerHost
 	idleConnTimeout := defaultIdleConnTimeout
 	responseHeaderTimeout := defaultResponseHeaderTimeout
+	tlsHandshakeTimeout := defaultUpstreamTLSHandshakeTimeout
 
 	if cfg != nil {
 		if cfg.Gateway.MaxIdleConns > 0 {
@@ -1298,6 +1311,9 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 		if cfg.Gateway.ResponseHeaderTimeout >= 0 {
 			responseHeaderTimeout = time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
 		}
+		if cfg.Gateway.TLSHandshakeTimeoutSeconds > 0 {
+			tlsHandshakeTimeout = time.Duration(cfg.Gateway.TLSHandshakeTimeoutSeconds) * time.Second
+		}
 	}
 
 	return poolSettings{
@@ -1306,6 +1322,7 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 		maxConnsPerHost:       maxConnsPerHost,
 		idleConnTimeout:       idleConnTimeout,
 		responseHeaderTimeout: responseHeaderTimeout,
+		tlsHandshakeTimeout:   tlsHandshakeTimeout,
 	}
 }
 
@@ -1342,7 +1359,7 @@ func newUpstreamDialer() *net.Dialer {
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
 		DialContext:           newUpstreamDialer().DialContext,
-		TLSHandshakeTimeout:   defaultUpstreamTLSHandshakeTimeout,
+		TLSHandshakeTimeout:   resolveTLSHandshakeTimeout(settings),
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
