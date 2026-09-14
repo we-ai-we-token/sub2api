@@ -520,6 +520,10 @@ export default {
         anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
         anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
         rewriteMessageCacheControl: 'Rewrite Message Cache Breakpoints',
+        openaiImagesForceHttp1:
+          'Force HTTP/1.1 for image routes',
+        openaiImagesForceHttp1Hint:
+          'Default off. When enabled, only OpenAI-compatible image routes (/v1/images/*) talk to the upstream over HTTP/1.1; text routes stay on HTTP/2. Use it when a slow proxy makes HTTP/2 health-check PINGs time out, which tears down every in-flight request sharing that connection. Takes effect on the next request - no restart, and in-flight requests are untouched.',
         rewriteMessageCacheControlHint: 'Default off: preserve client cache_control on message content blocks. When enabled, client breakpoints are stripped and proxy breakpoints are injected for clients that do not manage caching themselves.',
         clientDatelineNormalization: 'Client Dateline Normalization',
         clientDatelineNormalizationHint: 'Default on. Rewrites the "Today\'s date is …" sentence in Anthropic OAuth/Setup Token requests back to a canonical ASCII apostrophe and hyphen date format, erasing steganographic fingerprint bits some clients inject when they detect a non-official base URL. Applies to system prompts and <system-reminder> blocks only; API-Key accounts are unaffected.',

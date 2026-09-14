@@ -390,6 +390,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 	if err != nil {
 		return nil, err
 	}
+	// buildUpstreamRequest is shared with every text Responses call and tags the
+	// request with HTTPUpstreamProfileOpenAI. This is an image route, so override
+	// the profile here rather than in the shared builder; context.WithValue means
+	// the later write wins.
+	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), s.openAIImagesUpstreamProfile(upstreamCtx)))
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "text/event-stream")
 	upstreamReq.Header.Set("OpenAI-Beta", "responses=experimental")

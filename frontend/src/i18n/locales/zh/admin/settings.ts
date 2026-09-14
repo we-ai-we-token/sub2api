@@ -513,6 +513,9 @@ export default {
         anthropicCacheTTL1hInjection: 'Anthropic 缓存 TTL 注入',
         anthropicCacheTTL1hInjectionHint: '开启后，对 Anthropic OAuth/Setup Token 请求体中已有的 ephemeral 缓存块强制写入 1h；响应 usage 默认按 5m 回写计费，账号级 TTL 计费设置优先。',
         rewriteMessageCacheControl: '改写消息缓存断点',
+        openaiImagesForceHttp1: '生图路由强制 HTTP/1.1',
+        openaiImagesForceHttp1Hint:
+          '默认关闭。开启后仅 OpenAI 兼容生图路由（/v1/images/*）的上游转发改用 HTTP/1.1，文本路由继续走 HTTP/2。适用于代理链路变慢导致 HTTP/2 健康探测 PING 超时、连带掐断同一连接上所有在飞请求的场景。下一个请求即生效，无需重启，且不影响在飞请求。',
         rewriteMessageCacheControlHint: '默认关闭，保留客户端在 messages 内容块中的 cache_control。开启后会清除客户端断点并注入代理断点，适合不自行管理缓存策略的客户端。',
         clientDatelineNormalization: '客户端 dateline 归一化',
         clientDatelineNormalizationHint: '默认开启。将 Anthropic OAuth/Setup Token 请求体中 "Today\'s date is …" 语句里的撇号与日期分隔符还原为 ASCII 撇号 + 短横线 (2026-07-01) 的规范形态，抹除某些客户端在检测到非官方 base URL 时注入的隐写指纹位。仅作用于 system prompt 与 <system-reminder> 块内，API Key 账号不受影响。',

@@ -917,7 +917,7 @@ func (s *httpUpstreamService) resolvePoolSettings(isolation string, accountConcu
 
 func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, profile service.HTTPUpstreamProfile) poolSettings {
 	switch profile {
-	case service.HTTPUpstreamProfileOpenAI:
+	case service.HTTPUpstreamProfileOpenAI, service.HTTPUpstreamProfileOpenAIImages:
 		settings.responseHeaderTimeout = 0
 		if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
 			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
@@ -1013,6 +1013,12 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 	}
 	if profile == service.HTTPUpstreamProfileGrok {
 		return upstreamProtocolModeGrok
+	}
+	// 生图强制 HTTP/1.1：调用方（service 层）按系统设置决定挂哪个 profile，
+	// 这里只负责把它翻译成协议模式。复用既有的 openai_h1 常量，连接池因此天然
+	// 与文本的 openai_h2 分桶，翻开关不影响在飞请求。
+	if profile == service.HTTPUpstreamProfileOpenAIImages {
+		return upstreamProtocolModeOpenAIH1
 	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
@@ -1119,7 +1125,7 @@ func isUpstreamTimeoutError(err error) bool {
 }
 
 func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string, err error) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !isOpenAIHTTP2BookkeepingProfile(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -1138,8 +1144,16 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstr
 	}
 }
 
+// isOpenAIHTTP2BookkeepingProfile reports whether a profile participates in the
+// per-proxy HTTP/2 -> HTTP/1.1 fallback accounting. Failure and success must use
+// the same predicate: widening only one side would let the error window fill up
+// with nothing ever resetting it.
+func isOpenAIHTTP2BookkeepingProfile(profile service.HTTPUpstreamProfile) bool {
+	return profile == service.HTTPUpstreamProfileOpenAI || profile == service.HTTPUpstreamProfileOpenAIImages
+}
+
 func (s *httpUpstreamService) recordOpenAIHTTP2Success(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !isOpenAIHTTP2BookkeepingProfile(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	if !isHTTPProxyKey(proxyKey) {

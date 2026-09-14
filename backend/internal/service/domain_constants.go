@@ -666,6 +666,10 @@ const (
 	SettingKeyEnableClientDatelineNormalization = "enable_client_dateline_normalization"
 	// SettingKeyRewriteMessageCacheControl 是否改写 messages[*].content[*].cache_control（默认 false）
 	SettingKeyRewriteMessageCacheControl = "rewrite_message_cache_control"
+	// SettingKeyOpenAIImagesForceHTTP1 是否强制 OpenAI 生图路由（/v1/images/*）走 HTTP/1.1（默认 false）。
+	// 开启后只有生图上游改用 HTTP/1.1，文本路由不受影响。用于规避慢代理链路上
+	// HTTP/2 健康探测 PING 写不出去而超时、连带掐断同一连接上所有在飞流的问题。
+	SettingKeyOpenAIImagesForceHTTP1 = "openai_images_force_http1"
 	// SettingKeyAntigravityUserAgentVersion Antigravity 上游 User-Agent 版本号（空值使用环境变量/默认值）
 	SettingKeyAntigravityUserAgentVersion = "antigravity_user_agent_version"
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）

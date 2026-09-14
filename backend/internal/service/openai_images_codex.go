@@ -255,7 +255,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesCodexUpstreamRequest(
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), s.openAIImagesUpstreamProfile(ctx)))
 	req.Host = "chatgpt.com"
 
 	req.Header.Set("Authorization", "Bearer "+token)

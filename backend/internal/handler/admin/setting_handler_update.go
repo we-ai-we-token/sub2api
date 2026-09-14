@@ -253,6 +253,7 @@ type UpdateSettingsRequest struct {
 	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
+	OpenAIImagesForceHTTP1                 *bool   `json:"openai_images_force_http1"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
@@ -1736,6 +1737,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RewriteMessageCacheControl
 		}(),
+		OpenAIImagesForceHTTP1: func() bool {
+			if req.OpenAIImagesForceHTTP1 != nil {
+				return *req.OpenAIImagesForceHTTP1
+			}
+			return previousSettings.OpenAIImagesForceHTTP1
+		}(),
 		EnableClientDatelineNormalization: func() bool {
 			if req.EnableClientDatelineNormalization != nil {
 				return *req.EnableClientDatelineNormalization
@@ -2304,6 +2311,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:                          updatedSettings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:                     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:                             updatedSettings.RewriteMessageCacheControl,
+		OpenAIImagesForceHTTP1:                                 updatedSettings.OpenAIImagesForceHTTP1,
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,

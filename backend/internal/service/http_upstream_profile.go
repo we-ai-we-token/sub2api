@@ -7,10 +7,15 @@ import "context"
 type HTTPUpstreamProfile string
 
 const (
-	HTTPUpstreamProfileDefault    HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI     HTTPUpstreamProfile = "openai"
-	HTTPUpstreamProfileGrok       HTTPUpstreamProfile = "grok"
-	HTTPUpstreamProfileLongStream HTTPUpstreamProfile = "long_stream"
+	HTTPUpstreamProfileDefault HTTPUpstreamProfile = ""
+	HTTPUpstreamProfileOpenAI  HTTPUpstreamProfile = "openai"
+	// HTTPUpstreamProfileOpenAIImages marks OpenAI-compatible image routes
+	// (/v1/images/*). It behaves exactly like HTTPUpstreamProfileOpenAI except
+	// that gateway.openai_http2.images_enabled can force these requests onto
+	// HTTP/1.1 without affecting text routes.
+	HTTPUpstreamProfileOpenAIImages HTTPUpstreamProfile = "openai_images"
+	HTTPUpstreamProfileGrok         HTTPUpstreamProfile = "grok"
+	HTTPUpstreamProfileLongStream   HTTPUpstreamProfile = "long_stream"
 )
 
 type httpUpstreamProfileContextKey struct{}
@@ -38,7 +43,7 @@ func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
 		return HTTPUpstreamProfileDefault
 	}
 	switch profile {
-	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileGrok, HTTPUpstreamProfileLongStream:
+	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileOpenAIImages, HTTPUpstreamProfileGrok, HTTPUpstreamProfileLongStream:
 		return profile
 	default:
 		return HTTPUpstreamProfileDefault

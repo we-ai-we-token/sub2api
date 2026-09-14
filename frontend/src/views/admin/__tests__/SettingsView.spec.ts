@@ -473,6 +473,7 @@ const baseSettingsResponse = {
   claude_oauth_system_prompt_blocks: "",
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  openai_images_force_http1: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
@@ -1132,6 +1133,29 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         rewrite_message_cache_control: true,
+      }),
+    );
+  });
+
+  // 这个用例是 saveSettings payload 那一行的唯一护栏：UpdateSettingsRequest 里该字段
+  // 是可选的，漏掉 payload 行不会有 type error、lint error，UI 上开关能翻、保存也
+  // "成功"，只是刷新后弹回去。
+  it("submits the OpenAI images force HTTP/1.1 gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_images_force_http1: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_images_force_http1: true,
       }),
     );
   });

@@ -994,6 +994,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesCodexImagesEndpoint(t *testi
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, chatgptCodexImagesGenerationsURL, upstream.lastReq.URL.String())
 	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
+	// 二开：生图链路的 profile 由系统设置 openai_images_force_http1 决定；
+	// 本用例的 service 没有 settingService，助手回落到 HTTPUpstreamProfileOpenAI。
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))

@@ -5632,6 +5632,27 @@
                 <Toggle v-model="form.rewrite_message_cache_control" />
               </div>
 
+              <!-- 生图路由强制 HTTP/1.1 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t("admin.settings.gatewayForwarding.openaiImagesForceHttp1")
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.openaiImagesForceHttp1Hint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_images_force_http1" />
+              </div>
+
               <!-- 客户端 dateline 归一化（仅 Anthropic OAuth/SetupToken） -->
               <div class="flex items-center justify-between">
                 <div>
@@ -9808,6 +9829,7 @@ const form = reactive<SettingsForm>({
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  openai_images_force_http1: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
@@ -11393,6 +11415,7 @@ async function saveSettings() {
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
+      openai_images_force_http1: form.openai_images_force_http1,
       enable_client_dateline_normalization:
         form.enable_client_dateline_normalization,
       antigravity_user_agent_version:
