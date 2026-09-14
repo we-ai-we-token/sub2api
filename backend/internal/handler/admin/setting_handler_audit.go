@@ -479,6 +479,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIImagesForceHTTP1 != after.OpenAIImagesForceHTTP1 {
 		changed = append(changed, "openai_images_force_http1")
 	}
+	if before.OpenAIImagesTransportFailover != after.OpenAIImagesTransportFailover {
+		changed = append(changed, "openai_images_transport_failover")
+	}
 	if before.EnableClientDatelineNormalization != after.EnableClientDatelineNormalization {
 		changed = append(changed, "enable_client_dateline_normalization")
 	}

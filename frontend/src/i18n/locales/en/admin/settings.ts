@@ -520,6 +520,10 @@ export default {
         anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
         anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
         rewriteMessageCacheControl: 'Rewrite Message Cache Breakpoints',
+        openaiImagesTransportFailover:
+          'Retry image transport failures on another account',
+        openaiImagesTransportFailoverHint:
+          'Default on. When an image request fails with a transport error that carries no HTTP status, switch account and retry once. Only two cases qualify, both of which the upstream cannot have received in full: TLS handshake timeout, and a write-direction connection reset / broken pipe. Deliberately excluded are unexpected EOF and read-direction resets - there the upstream may already have produced and billed an image, so retrying would pay twice.',
         openaiImagesForceHttp1:
           'Force HTTP/1.1 for image routes',
         openaiImagesForceHttp1Hint:

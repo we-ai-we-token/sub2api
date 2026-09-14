@@ -513,6 +513,9 @@ export default {
         anthropicCacheTTL1hInjection: 'Anthropic 缓存 TTL 注入',
         anthropicCacheTTL1hInjectionHint: '开启后，对 Anthropic OAuth/Setup Token 请求体中已有的 ephemeral 缓存块强制写入 1h；响应 usage 默认按 5m 回写计费，账号级 TTL 计费设置优先。',
         rewriteMessageCacheControl: '改写消息缓存断点',
+        openaiImagesTransportFailover: '生图传输错误换号重试',
+        openaiImagesTransportFailoverHint:
+          '默认开启。生图请求遇到「没有 HTTP 状态码的传输层错误」时，换一个账号重试一次。只覆盖两类上游必然没收到完整请求的错误：TLS 握手超时、write 方向连接被重置/管道断开。刻意排除 unexpected EOF 与 read 方向断连——那些上游可能已经出图并计费，重试等于付两次钱。',
         openaiImagesForceHttp1: '生图路由强制 HTTP/1.1',
         openaiImagesForceHttp1Hint:
           '默认关闭。开启后仅 OpenAI 兼容生图路由（/v1/images/*）的上游转发改用 HTTP/1.1，文本路由继续走 HTTP/2。适用于代理链路变慢导致 HTTP/2 健康探测 PING 超时、连带掐断同一连接上所有在飞请求的场景。下一个请求即生效，无需重启，且不影响在飞请求。',

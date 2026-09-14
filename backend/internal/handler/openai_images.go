@@ -17,7 +17,10 @@ import (
 )
 
 const (
-	openAIImagesTransientMaxAccountSwitches   = 3
+	openAIImagesTransientMaxAccountSwitches = 3
+	// 传输层错误（TLS 握手超时 / write 方向断连）只换一次号：这两类上游必然没收到
+	// 完整请求，重试安全；但生图本身耗时长，多试没有收益只会拖长客户等待。
+	openAIImagesTransportMaxAccountSwitches   = 1
 	openAIImagesEmptyOutputMaxAccountSwitches = 1
 )
 
@@ -163,6 +166,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	specialTransientSwitchCount := 0
+	transportFailoverCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -410,6 +414,34 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						zap.Int("max_switches", maxAccountSwitches),
 					)
 					continue
+				}
+				// 无 HTTP 状态码的传输层错误：上面两个分支（UpstreamFailoverError /
+				// OpenAIImagesUpstreamError）都接不住，历史上直接 502 返回客户，实测
+				// 97% 的这类 502 连一次重试都没有。这里只对「上游必然没收到完整请求」
+				// 的两类错误换一次号；判定见 service.IsRetryableOpenAIImagesTransportError。
+				if !streamStarted &&
+					service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward &&
+					h.gatewayService.ShouldFailoverOpenAIImagesTransportError(requestCtx, err) {
+					if transportFailoverCount < openAIImagesTransportMaxAccountSwitches &&
+						switchCount < maxAccountSwitches {
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), false, nil, err)
+						h.gatewayService.RecordOpenAIAccountSwitch()
+						failedAccountIDs[account.ID] = struct{}{}
+						transportFailoverCount++
+						switchCount++
+						reqLog.Warn("openai.images.transport_failover_switching",
+							zap.Int64("account_id", account.ID),
+							zap.Int("switch_count", transportFailoverCount),
+							zap.Int("max_switches", openAIImagesTransportMaxAccountSwitches),
+							zap.Error(err),
+						)
+						continue
+					}
+					reqLog.Warn("openai.images.transport_failover_exhausted",
+						zap.Int64("account_id", account.ID),
+						zap.Int("switch_count", transportFailoverCount),
+						zap.Error(err),
+					)
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), false, nil, err)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)

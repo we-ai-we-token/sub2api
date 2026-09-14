@@ -254,6 +254,7 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	OpenAIImagesForceHTTP1                 *bool   `json:"openai_images_force_http1"`
+	OpenAIImagesTransportFailover          *bool   `json:"openai_images_transport_failover"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
@@ -1743,6 +1744,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIImagesForceHTTP1
 		}(),
+		OpenAIImagesTransportFailover: func() bool {
+			if req.OpenAIImagesTransportFailover != nil {
+				return *req.OpenAIImagesTransportFailover
+			}
+			return previousSettings.OpenAIImagesTransportFailover
+		}(),
 		EnableClientDatelineNormalization: func() bool {
 			if req.EnableClientDatelineNormalization != nil {
 				return *req.EnableClientDatelineNormalization
@@ -2312,6 +2319,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:                     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:                             updatedSettings.RewriteMessageCacheControl,
 		OpenAIImagesForceHTTP1:                                 updatedSettings.OpenAIImagesForceHTTP1,
+		OpenAIImagesTransportFailover:                          updatedSettings.OpenAIImagesTransportFailover,
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,

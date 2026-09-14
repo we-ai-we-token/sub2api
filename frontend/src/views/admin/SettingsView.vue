@@ -5653,6 +5653,27 @@
                 <Toggle v-model="form.openai_images_force_http1" />
               </div>
 
+              <!-- 生图传输层错误换号重试 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t("admin.settings.gatewayForwarding.openaiImagesTransportFailover")
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.openaiImagesTransportFailoverHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_images_transport_failover" />
+              </div>
+
               <!-- 客户端 dateline 归一化（仅 Anthropic OAuth/SetupToken） -->
               <div class="flex items-center justify-between">
                 <div>
@@ -9830,6 +9851,7 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   openai_images_force_http1: false,
+  openai_images_transport_failover: true,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
@@ -11416,6 +11438,7 @@ async function saveSettings() {
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
       openai_images_force_http1: form.openai_images_force_http1,
+      openai_images_transport_failover: form.openai_images_transport_failover,
       enable_client_dateline_normalization:
         form.enable_client_dateline_normalization,
       antigravity_user_agent_version:

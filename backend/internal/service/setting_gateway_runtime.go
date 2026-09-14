@@ -64,6 +64,7 @@ type cachedGatewayForwardingSettings struct {
 	rewriteMessageCacheControl       bool
 	clientDatelineNormalization      bool
 	openAIImagesForceHTTP1           bool
+	openAIImagesTransportFailover    bool
 	expiresAt                        int64 // unix nano
 }
 
@@ -742,6 +743,7 @@ type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
 	clientDatelineNormalization                                                           bool
 	openAIImagesForceHTTP1                                                                bool
+	openAIImagesTransportFailover                                                         bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
 }
 
@@ -760,6 +762,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 				clientDatelineNormalization:      cached.clientDatelineNormalization,
 				openAIImagesForceHTTP1:           cached.openAIImagesForceHTTP1,
+				openAIImagesTransportFailover:    cached.openAIImagesTransportFailover,
 			}
 		}
 	}
@@ -778,6 +781,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 					clientDatelineNormalization:      cached.clientDatelineNormalization,
 					openAIImagesForceHTTP1:           cached.openAIImagesForceHTTP1,
+					openAIImagesTransportFailover:    cached.openAIImagesTransportFailover,
 				}, nil
 			}
 		}
@@ -795,6 +799,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyRewriteMessageCacheControl,
 			SettingKeyEnableClientDatelineNormalization,
 			SettingKeyOpenAIImagesForceHTTP1,
+			SettingKeyOpenAIImagesTransportFailover,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -808,9 +813,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				clientDatelineNormalization:      true,
 				openAIImagesForceHTTP1:           false,
+				openAIImagesTransportFailover:    true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true, openAIImagesForceHTTP1: false}, nil
+			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true, openAIImagesForceHTTP1: false, openAIImagesTransportFailover: true}, nil
 		}
 		ttftMode := normalizeOpenAITTFTMode(values[SettingKeyOpenAITTFTMode])
 		fp := true
@@ -835,6 +841,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			clientDatelineNormalization = v == "true"
 		}
 		openAIImagesForceHTTP1 := values[SettingKeyOpenAIImagesForceHTTP1] == "true"
+		openAIImagesTransportFailover := true
+		if v, ok := values[SettingKeyOpenAIImagesTransportFailover]; ok && v != "" {
+			openAIImagesTransportFailover = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			openAITTFTMode:                   ttftMode,
 			fingerprintUnification:           fp,
@@ -847,6 +857,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
 			openAIImagesForceHTTP1:           openAIImagesForceHTTP1,
+			openAIImagesTransportFailover:    openAIImagesTransportFailover,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -861,12 +872,13 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
 			openAIImagesForceHTTP1:           openAIImagesForceHTTP1,
+			openAIImagesTransportFailover:    openAIImagesTransportFailover,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true, openAIImagesForceHTTP1: false}
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true, openAIImagesForceHTTP1: false, openAIImagesTransportFailover: true}
 }
 
 // GetOpenAITTFTMode 返回 Responses first_token_ms 的统计口径。
@@ -902,6 +914,12 @@ func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Contex
 // 开启后只有 /v1/images/* 的上游转发改用 HTTP/1.1，文本路由继续 HTTP/2。
 func (s *SettingService) IsOpenAIImagesForceHTTP1Enabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).openAIImagesForceHTTP1
+}
+
+// IsOpenAIImagesTransportFailoverEnabled 生图遇到可安全重试的传输层错误时，
+// 是否换账号重试一次。默认开启。
+func (s *SettingService) IsOpenAIImagesTransportFailoverEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).openAIImagesTransportFailover
 }
 
 // GetClaudeOAuthSystemPromptInjectionSettings returns the Claude OAuth mimic

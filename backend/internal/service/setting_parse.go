@@ -882,6 +882,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableClientDatelineNormalization = true
 	}
 	result.OpenAIImagesForceHTTP1 = settings[SettingKeyOpenAIImagesForceHTTP1] == "true"
+	if v, ok := settings[SettingKeyOpenAIImagesTransportFailover]; ok && v != "" {
+		result.OpenAIImagesTransportFailover = v == "true"
+	} else {
+		result.OpenAIImagesTransportFailover = true
+	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])

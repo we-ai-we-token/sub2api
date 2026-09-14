@@ -666,6 +666,11 @@ const (
 	SettingKeyEnableClientDatelineNormalization = "enable_client_dateline_normalization"
 	// SettingKeyRewriteMessageCacheControl 是否改写 messages[*].content[*].cache_control（默认 false）
 	SettingKeyRewriteMessageCacheControl = "rewrite_message_cache_control"
+	// SettingKeyOpenAIImagesTransportFailover 生图遇到「无 HTTP 状态码的传输层错误」时
+	// 是否换账号重试一次（默认 true）。只覆盖 TLS 握手超时与 write 方向断连——这两类
+	// 上游必然没收到完整请求；unexpected EOF / read 方向断连不在其列，那些上游可能
+	// 已经出图并计费。
+	SettingKeyOpenAIImagesTransportFailover = "openai_images_transport_failover"
 	// SettingKeyOpenAIImagesForceHTTP1 是否强制 OpenAI 生图路由（/v1/images/*）走 HTTP/1.1（默认 false）。
 	// 开启后只有生图上游改用 HTTP/1.1，文本路由不受影响。用于规避慢代理链路上
 	// HTTP/2 健康探测 PING 写不出去而超时、连带掐断同一连接上所有在飞流的问题。

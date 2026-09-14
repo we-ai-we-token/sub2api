@@ -482,6 +482,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
 	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyOpenAIImagesForceHTTP1] = strconv.FormatBool(settings.OpenAIImagesForceHTTP1)
+	updates[SettingKeyOpenAIImagesTransportFailover] = strconv.FormatBool(settings.OpenAIImagesTransportFailover)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
@@ -718,6 +719,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
 		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		openAIImagesForceHTTP1:           settings.OpenAIImagesForceHTTP1,
+		openAIImagesTransportFailover:    settings.OpenAIImagesTransportFailover,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")

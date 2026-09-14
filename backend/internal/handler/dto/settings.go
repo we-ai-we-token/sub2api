@@ -212,6 +212,7 @@ type SystemSettings struct {
 	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
 	OpenAIImagesForceHTTP1                 bool   `json:"openai_images_force_http1"`
+	OpenAIImagesTransportFailover          bool   `json:"openai_images_transport_failover"`
 	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
