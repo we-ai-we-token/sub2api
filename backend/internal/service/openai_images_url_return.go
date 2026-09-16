@@ -1,7 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -9,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // 生图返回对象存储 URL（分组开关 Group.ImageReturnURL，仅 openai / gemini 平台）。
@@ -162,4 +168,115 @@ func (s *OpenAIGatewayService) rewriteOpenAIImagesToStorageURL(
 		return body
 	}
 	return rewritten
+}
+
+// openAIImagesResponseFormatField 是客户端用来要求返回 URL 的标准 OpenAI 参数名。
+const openAIImagesResponseFormatField = "response_format"
+
+// stripOpenAIImagesResponseFormatForURLReturn 在分组开启「生图返回 URL」时，
+// 把 response_format 从**转发给上游**的请求体里摘掉。
+//
+// 为什么必须摘：Azure / OpenAI 的 gpt-image-* 系列根本不认这个参数（它是 dall-e 时代的
+// 遗留），原样转发会被上游直接 400 `Unknown parameter: 'response_format'`，
+// 网关的改写逻辑压根没机会执行。而分组开启这个开关，本身就等于声明「上游没有返回 URL
+// 的能力，由网关来补」，所以这个值没有转发的必要。
+//
+// 只改转发体，不动 parsed.ResponseFormat —— 后者既是改写判据
+// （clientRequestedImageURL），又参与账号能力分级（resolveOpenAIImagesCapability），
+// 改它会连带收窄可调度账号池。
+//
+// 任何一步失败都原样返回入参，降级为「照旧转发」而不是让请求失败。
+func (s *OpenAIGatewayService) stripOpenAIImagesResponseFormatForURLReturn(
+	c *gin.Context,
+	parsed *OpenAIImagesRequest,
+	body []byte,
+	contentType string,
+) ([]byte, string) {
+	if parsed == nil || strings.TrimSpace(parsed.ResponseFormat) == "" {
+		return body, contentType
+	}
+	if !groupWantsImageReturnURL(c) {
+		return body, contentType
+	}
+	stripped, strippedType, err := stripOpenAIImagesResponseFormatField(body, contentType)
+	if err != nil {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[OpenAI] Images response_format strip skipped err=%s",
+			sanitizeUpstreamErrorMessage(err.Error()),
+		)
+		return body, contentType
+	}
+	return stripped, strippedType
+}
+
+// stripOpenAIImagesResponseFormatField 同时处理 JSON 与 multipart 两种请求体。
+func stripOpenAIImagesResponseFormatField(body []byte, contentType string) ([]byte, string, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil && strings.EqualFold(mediaType, "multipart/form-data") {
+		return stripOpenAIImagesMultipartResponseFormat(body, contentType)
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, contentType, nil
+	}
+	if !gjson.GetBytes(body, openAIImagesResponseFormatField).Exists() {
+		return body, contentType, nil
+	}
+	stripped, err := sjson.DeleteBytes(body, openAIImagesResponseFormatField)
+	if err != nil {
+		return nil, "", fmt.Errorf("delete response_format: %w", err)
+	}
+	return stripped, contentType, nil
+}
+
+// stripOpenAIImagesMultipartResponseFormat 重建 multipart 体并跳过 response_format 字段。
+// 结构照搬 rewriteOpenAIImagesMultipartModel，差别是「跳过」而非「改写」，
+// 因此要在 CreatePart 之前判断字段名。
+func stripOpenAIImagesMultipartResponseFormat(body []byte, contentType string) ([]byte, string, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse multipart content-type: %w", err)
+	}
+	boundary := strings.TrimSpace(params["boundary"])
+	if boundary == "" {
+		return nil, "", fmt.Errorf("multipart boundary is required")
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	dropped := false
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("read multipart body: %w", err)
+		}
+		// 只丢普通表单字段，不碰同名的文件分片（理论上不存在，防御性判断）。
+		if strings.TrimSpace(part.FormName()) == openAIImagesResponseFormatField && part.FileName() == "" {
+			dropped = true
+			_ = part.Close()
+			continue
+		}
+		target, err := writer.CreatePart(cloneMultipartHeader(part.Header))
+		if err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("create multipart part: %w", err)
+		}
+		if _, err := io.Copy(target, part); err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("copy multipart part: %w", err)
+		}
+		_ = part.Close()
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("finalize multipart body: %w", err)
+	}
+	if !dropped {
+		return body, contentType, nil
+	}
+	return buffer.Bytes(), writer.FormDataContentType(), nil
 }

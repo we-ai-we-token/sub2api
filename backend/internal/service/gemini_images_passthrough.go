@@ -52,6 +52,8 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 	}
 
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
+	// 同 openai_images.go：开关开启时 response_format 由网关消费，不转发给上游。
+	forwardBody, forwardContentType = s.stripOpenAIImagesResponseFormatForURLReturn(c, parsed, forwardBody, forwardContentType)
 	if err != nil {
 		return nil, err
 	}

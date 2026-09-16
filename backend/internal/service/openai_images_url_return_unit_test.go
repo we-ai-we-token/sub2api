@@ -3,11 +3,16 @@
 package service
 
 import (
+	"bytes"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // 生图返回 URL 的准入矩阵。核心约束是「客户端优先」：开关只是准入，
@@ -127,4 +132,90 @@ func TestSanitizeGroupImageReturnURL(t *testing.T) {
 		sanitizeGroupImageReturnURL(g)
 		require.Equal(t, tc.want, g.ImageReturnURL, "platform=%s", tc.platform)
 	}
+}
+
+// response_format 剥离：开关开启时不能把该参数转发给上游（gpt-image-* 会 400）。
+func TestStripOpenAIImagesResponseFormat_JSON(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	c := imageURLReturnContext(t, PlatformOpenAI, true)
+	body := []byte(`{"model":"gpt-image-2","prompt":"cat","size":"1024x1024","response_format":"url"}`)
+	got, ct := svc.stripOpenAIImagesResponseFormatForURLReturn(c, &OpenAIImagesRequest{ResponseFormat: "url"}, body, "application/json")
+	require.Equal(t, "application/json", ct)
+	require.False(t, gjson.GetBytes(got, "response_format").Exists(), "response_format 必须被摘掉")
+	// 其余字段一个都不能少
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(got, "model").String())
+	require.Equal(t, "cat", gjson.GetBytes(got, "prompt").String())
+	require.Equal(t, "1024x1024", gjson.GetBytes(got, "size").String())
+}
+
+// b64_json 同样要摘：上游不认这个参数名本身，不管值是什么。
+func TestStripOpenAIImagesResponseFormat_AlsoStripsB64JSON(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	c := imageURLReturnContext(t, PlatformOpenAI, true)
+	body := []byte(`{"model":"gpt-image-2","prompt":"cat","response_format":"b64_json"}`)
+	got, _ := svc.stripOpenAIImagesResponseFormatForURLReturn(c, &OpenAIImagesRequest{ResponseFormat: "b64_json"}, body, "application/json")
+	require.False(t, gjson.GetBytes(got, "response_format").Exists())
+}
+
+// 开关关闭时必须原样转发（字节级不变），否则会改变既有分组的上游请求。
+func TestStripOpenAIImagesResponseFormat_NoopWhenToggleOff(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	c := imageURLReturnContext(t, PlatformOpenAI, false)
+	body := []byte(`{"model":"gpt-image-2","prompt":"cat","response_format":"url"}`)
+	got, ct := svc.stripOpenAIImagesResponseFormatForURLReturn(c, &OpenAIImagesRequest{ResponseFormat: "url"}, body, "application/json")
+	require.Equal(t, string(body), string(got))
+	require.Equal(t, "application/json", ct)
+}
+
+// 客户端没传该参数时不应重建请求体。
+func TestStripOpenAIImagesResponseFormat_NoopWhenAbsent(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	c := imageURLReturnContext(t, PlatformOpenAI, true)
+	body := []byte(`{"model":"gpt-image-2","prompt":"cat"}`)
+	got, _ := svc.stripOpenAIImagesResponseFormatForURLReturn(c, &OpenAIImagesRequest{}, body, "application/json")
+	require.Equal(t, string(body), string(got))
+}
+
+// multipart（/v1/images/edits）：摘掉该字段，其余字段与文件分片必须原样保留。
+func TestStripOpenAIImagesResponseFormat_Multipart(t *testing.T) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	require.NoError(t, w.WriteField("model", "gpt-image-2"))
+	require.NoError(t, w.WriteField("prompt", "cat"))
+	require.NoError(t, w.WriteField("response_format", "url"))
+	fw, err := w.CreateFormFile("image", "a.png")
+	require.NoError(t, err)
+	_, err = fw.Write([]byte("PNGDATA"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	svc := &OpenAIGatewayService{}
+	c := imageURLReturnContext(t, PlatformOpenAI, true)
+	got, gotType := svc.stripOpenAIImagesResponseFormatForURLReturn(
+		c, &OpenAIImagesRequest{ResponseFormat: "url"}, buf.Bytes(), w.FormDataContentType())
+
+	_, params, err := mime.ParseMediaType(gotType)
+	require.NoError(t, err)
+	r := multipart.NewReader(bytes.NewReader(got), params["boundary"])
+	fields := map[string]string{}
+	files := map[string]string{}
+	for {
+		part, err := r.NextPart()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		data, err := io.ReadAll(part)
+		require.NoError(t, err)
+		if part.FileName() != "" {
+			files[part.FormName()] = string(data)
+		} else {
+			fields[part.FormName()] = string(data)
+		}
+		_ = part.Close()
+	}
+	require.NotContains(t, fields, "response_format", "response_format 必须被摘掉")
+	require.Equal(t, "gpt-image-2", fields["model"])
+	require.Equal(t, "cat", fields["prompt"])
+	require.Equal(t, "PNGDATA", files["image"], "文件分片必须原样保留")
 }

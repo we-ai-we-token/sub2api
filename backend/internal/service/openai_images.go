@@ -611,6 +611,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		account.Type,
 	)
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
+	// 分组开启「生图返回 URL」时不把 response_format 转发给上游：gpt-image-* 不认这个参数，
+	// 原样转发会被上游 400 Unknown parameter，改写逻辑根本执行不到。
+	forwardBody, forwardContentType = s.stripOpenAIImagesResponseFormatForURLReturn(c, parsed, forwardBody, forwardContentType)
 	if err != nil {
 		return nil, err
 	}
