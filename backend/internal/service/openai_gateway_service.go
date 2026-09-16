@@ -498,6 +498,11 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
+
+	// imageStorageResolver 生图返回 URL 用的对象存储解析器（可为 nil = 功能不可用）。
+	// 用 setter 注入而非构造函数形参：NewOpenAIGatewayService 已有 24 个参数，
+	// 加形参会让上游按原 arity 调用的 route 用例编译失败。
+	imageStorageResolver ImageStorageResolver
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -1257,5 +1262,15 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		return apiKey, "apikey", nil
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
+	}
+}
+
+// SetImageStorageResolver 注入生图返回 URL 所需的对象存储解析器。
+//
+// 解析器每次调用都会重新读取后台设置（带缓存），因此管理端改配置立即生效，无需重启。
+// 未注入（nil）时生图返回 URL 功能整体不可用，分组开关即使打开也只是行为不变。
+func (s *OpenAIGatewayService) SetImageStorageResolver(resolver ImageStorageResolver) {
+	if s != nil {
+		s.imageStorageResolver = resolver
 	}
 }

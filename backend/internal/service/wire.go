@@ -682,7 +682,17 @@ func ProvideImageStorageSettingService(
 // 对象存储是异步图片任务的启用前提：仅当开关打开且凭证齐全时功能才可用，否则整体禁用
 // （handler 返回 404，不创建任务、不写 Redis），从而避免大 base64 结果撑爆 Redis。
 // 启用状态由 settings 服务在运行时解析，因此后台改开关后无需重启即可生效。
-func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSettingService) *ImageTaskService {
+// 同步生图链路（分组开关 Group.ImageReturnURL）也要用同一个解析器，因此在这里顺带注入
+// OpenAIGatewayService。放这里而不是 NewOpenAIGatewayService 的形参，是因为该构造函数已有
+// 24 个参数且上游用例按原 arity 调用，加形参会让它们编译不过；wire_gen.go 是生成文件不能手改，
+// 而本函数是 wire 图里唯一同时够得着「对象存储设置」与「生图网关」的地方。
+// 两者之间无依赖关系，不会成环。
+func ProvideImageTaskService(
+	store ImageTaskStore,
+	settings *ImageStorageSettingService,
+	gateway *OpenAIGatewayService,
+) *ImageTaskService {
+	gateway.SetImageStorageResolver(settings.Resolver())
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 

@@ -315,7 +315,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	modelPlazaHandler := handler.NewModelPlazaHandler(modelPlazaService, apiKeyService, settingService)
 	modelPlazaLegacyHandler := handler.NewModelPlazaLegacyHandler(channelService, apiKeyService, gatewayService)
 	imageTaskStore := repository.NewImageTaskStore(redisClient)
-	imageTaskService := service.ProvideImageTaskService(imageTaskStore, imageStorageSettingService)
+	imageTaskService := service.ProvideImageTaskService(imageTaskStore, imageStorageSettingService, openAIGatewayService)
 	asyncImageHandler := handler.NewAsyncImageHandler(imageTaskService, openAIGatewayHandler)
 	batchImageRepository := repository.NewBatchImageRepository(db)
 	batchImageQueue := repository.NewBatchImageQueue(redisClient, configConfig)

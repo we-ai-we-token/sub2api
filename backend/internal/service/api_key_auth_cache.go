@@ -119,6 +119,9 @@ type APIKeyAuthGroupSnapshot struct {
 	// OAuth 生图链路开关（仅 openai 平台使用）。随快照缓存，供网关 forwardOpenAIImagesOAuth 分流。
 	ImageUseResponsesAPI bool `json:"image_use_responses_api"`
 
+	// 生图返回 URL 开关（仅 openai / gemini 平台使用）。随快照缓存，供生图链路判断是否转存对象存储。
+	ImageReturnURL bool `json:"image_return_url"`
+
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
 

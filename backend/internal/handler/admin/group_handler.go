@@ -246,6 +246,7 @@ type CreateGroupRequest struct {
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
 	// OAuth 生图链路开关（仅 openai 平台使用），nil 时默认 true（走上游 Responses 链路）
 	ImageUseResponsesAPI *bool `json:"image_use_responses_api"`
+	ImageReturnURL       *bool `json:"image_return_url"`
 	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）
@@ -327,6 +328,7 @@ type UpdateGroupRequest struct {
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
 	// OAuth 生图链路开关（仅 openai 平台使用），nil 表示未提供不改动
 	ImageUseResponsesAPI *bool `json:"image_use_responses_api"`
+	ImageReturnURL       *bool `json:"image_return_url"`
 	// 固定账号 manifest 配置；nil 表示不修改。
 	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
@@ -733,6 +735,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		ImageUseResponsesAPI:            req.ImageUseResponsesAPI,
+		ImageReturnURL:                  req.ImageReturnURL,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
@@ -884,6 +887,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		ImageUseResponsesAPI:            req.ImageUseResponsesAPI,
+		ImageReturnURL:                  req.ImageReturnURL,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,

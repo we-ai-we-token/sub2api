@@ -346,6 +346,20 @@ func groupSupportsOpenAIFast(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformComposite
 }
 
+// groupSupportsImageReturnURL 生图返回 URL 仅对 openai / gemini 平台有意义：
+// 其余平台要么不走 /v1/images/* 链路，要么响应里没有 data[].url 这个位置。
+func groupSupportsImageReturnURL(platform string) bool {
+	return platform == PlatformOpenAI || platform == PlatformGemini
+}
+
+// sanitizeGroupImageReturnURL 在创建与更新两条路径上都要调用：
+// 分组平台被改成不支持的平台时，静默把开关归零，避免留下一个永不生效的 true。
+func sanitizeGroupImageReturnURL(group *Group) {
+	if group != nil && !groupSupportsImageReturnURL(group.Platform) {
+		group.ImageReturnURL = false
+	}
+}
+
 func sanitizeGroupOpenAIFast(group *Group) {
 	if group == nil || !groupSupportsOpenAIFast(group.Platform) {
 		if group != nil {
@@ -522,6 +536,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		imageUseResponsesAPI = *input.ImageUseResponsesAPI
 	}
 
+	// ImageReturnURL：默认 false（老客户端行为零变化），仅当显式传入 true 时开启
+	imageReturnURL := false
+	if input.ImageReturnURL != nil {
+		imageReturnURL = *input.ImageReturnURL
+	}
+
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
@@ -620,6 +640,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelAllowlist:                  modelAllowlist,
 		ImageUseResponsesAPI:            imageUseResponsesAPI,
+		ImageReturnURL:                  imageReturnURL,
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
@@ -630,6 +651,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
+	sanitizeGroupImageReturnURL(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
@@ -1034,6 +1056,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImageUseResponsesAPI != nil {
 		group.ImageUseResponsesAPI = *input.ImageUseResponsesAPI
 	}
+	if input.ImageReturnURL != nil {
+		group.ImageReturnURL = *input.ImageReturnURL
+	}
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig
 	}
@@ -1063,6 +1088,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
+	sanitizeGroupImageReturnURL(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}

@@ -291,6 +291,11 @@ func (Group) Fields() []ent.Field {
 			Default(true).
 			Comment("OAuth 生图链路：true(默认)走上游 Responses(image_generation 工具)链路，false 走专用 codex images 端点链路"),
 
+		// 生图返回 URL 开关 (added by migration 238；仅 openai / gemini 平台使用)
+		field.Bool("image_return_url").
+			Default(false).
+			Comment("生图返回 URL：开启后客户端显式传 response_format=url 时，把图片转存对象存储并返回短链接；关闭或客户端未要求 url 时行为不变"),
+
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").
 			Default(0).

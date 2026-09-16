@@ -144,6 +144,8 @@ const (
 	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
 	// FieldImageUseResponsesAPI holds the string denoting the image_use_responses_api field in the database.
 	FieldImageUseResponsesAPI = "image_use_responses_api"
+	// FieldImageReturnURL holds the string denoting the image_return_url field in the database.
+	FieldImageReturnURL = "image_return_url"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -297,6 +299,7 @@ var Columns = []string{
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
 	FieldImageUseResponsesAPI,
+	FieldImageReturnURL,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
@@ -435,6 +438,8 @@ var (
 	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
 	// DefaultImageUseResponsesAPI holds the default value on creation for the "image_use_responses_api" field.
 	DefaultImageUseResponsesAPI bool
+	// DefaultImageReturnURL holds the default value on creation for the "image_return_url" field.
+	DefaultImageReturnURL bool
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
@@ -746,6 +751,11 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByImageUseResponsesAPI orders the results by the image_use_responses_api field.
 func ByImageUseResponsesAPI(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageUseResponsesAPI, opts...).ToFunc()
+}
+
+// ByImageReturnURL orders the results by the image_return_url field.
+func ByImageReturnURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageReturnURL, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.

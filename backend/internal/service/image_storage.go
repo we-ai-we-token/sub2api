@@ -57,6 +57,16 @@ func defaultImageDownloadHTTPClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
 
+// MaxImageBytes 返回单张图片允许的最大字节数（0 表示不限制）。
+// 供同步生图链路在改写前做一次预检 —— fetchImageBytes 的 b64_json 分支
+// 不校验该上限，只有 url 下载分支校验。
+func (u *ImageResultUploader) MaxImageBytes() int64 {
+	if u == nil {
+		return 0
+	}
+	return u.maxDownloadBytes
+}
+
 // Rewrite 将 result（上游生图响应 JSON）里的每张图片转存到对象存储，
 // 返回改写后的紧凑结果（data[i].url 指向对象存储，b64_json 被移除）。
 // 任一图片转存失败即返回 error（调用方据此将任务标记为失败，绝不把大 blob 落 Redis）。

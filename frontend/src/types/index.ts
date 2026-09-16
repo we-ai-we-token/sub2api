@@ -652,6 +652,8 @@ export interface AdminGroup extends Group {
   model_allowlist?: ModelAllowlist
   // OAuth 生图链路开关（仅 openai 平台使用）：true(默认)走上游 Responses 链路，false 走专用 codex images 端点
   image_use_responses_api?: boolean
+  // 生图返回 URL 开关（仅 openai / gemini 平台使用）：开启后客户端显式传 response_format=url 时返回对象存储短链接
+  image_return_url?: boolean
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -840,6 +842,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   image_use_responses_api?: boolean
+  image_return_url?: boolean
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -911,6 +914,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   image_use_responses_api?: boolean
+  image_return_url?: boolean
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean

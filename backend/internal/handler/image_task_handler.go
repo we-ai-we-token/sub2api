@@ -270,6 +270,9 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	request.URL.Path = strings.TrimSuffix(request.URL.Path, "/async")
 
 	taskCtx := c.Copy()
+	// 异步链路自己会在 ImageTaskService.Complete 里调 ImageResultUploader.Rewrite，
+	// 打上标记让重入的同步链路跳过它那份上传，否则同一张图传两次、同步侧那份成孤儿对象。
+	service.MarkImagesAsyncManaged(taskCtx)
 	recorder := httptest.NewRecorder()
 	recorderCtx, _ := gin.CreateTestContext(recorder)
 	taskCtx.Writer = recorderCtx.Writer

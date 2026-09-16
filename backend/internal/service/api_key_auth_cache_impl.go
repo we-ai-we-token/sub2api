@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24: group model_allowlist field (renamed from models_list_config, enforcing semantics)
+const apiKeyAuthSnapshotVersion = 25 // v25: group image_return_url field (生图返回对象存储 URL 开关)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -428,6 +428,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
 			ImageUseResponsesAPI:            apiKey.Group.ImageUseResponsesAPI,
+			ImageReturnURL:                  apiKey.Group.ImageReturnURL,
 			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
 			MaxReasoningEffort:              apiKey.Group.MaxReasoningEffort,
@@ -535,6 +536,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
 			ImageUseResponsesAPI:            snapshot.Group.ImageUseResponsesAPI,
+			ImageReturnURL:                  snapshot.Group.ImageReturnURL,
 			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,

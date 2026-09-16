@@ -1163,6 +1163,11 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      imageReturnUrl: {
+        title: 'Image URL Response',
+        enabled: 'Return object-storage URL for images',
+        hint: 'When enabled, requests that explicitly send response_format=url get their images uploaded to object storage; the response returns a short-lived presigned link in data[].url (expiry configured under Settings → Backup → Image Object Storage, 24h by default) and data[].b64_json is removed. Requests that do not ask for url are unaffected, so existing clients keep working. Object storage must be configured and enabled under Settings → Backup → Image Object Storage; if the upload fails the response falls back to base64. Available for openai / gemini platforms only.',
+      },
       openaiImage: {
         title: 'OpenAI Image Generation Path',
         useResponsesApi: 'Use Responses image path',

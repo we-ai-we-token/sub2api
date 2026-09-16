@@ -1430,6 +1430,41 @@
           </div>
         </div>
 
+        <!-- 生图返回 URL（仅 openai / gemini 平台） -->
+        <div
+          v-if="supportsGroupImageReturnUrl(createForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.imageReturnUrl.title") }}
+          </h4>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{
+              t("admin.groups.imageReturnUrl.enabled")
+            }}</label>
+            <button
+              type="button"
+              @click="createForm.image_return_url = !createForm.image_return_url"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.image_return_url
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.image_return_url ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.imageReturnUrl.hint") }}
+          </p>
+        </div>
+
         <!-- OpenAI 生图链路配置 + Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -3101,6 +3136,41 @@
           </div>
         </div>
 
+        <!-- 生图返回 URL（仅 openai / gemini 平台） -->
+        <div
+          v-if="supportsGroupImageReturnUrl(editForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.imageReturnUrl.title") }}
+          </h4>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{
+              t("admin.groups.imageReturnUrl.enabled")
+            }}</label>
+            <button
+              type="button"
+              @click="editForm.image_return_url = !editForm.image_return_url"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.image_return_url
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.image_return_url ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.imageReturnUrl.hint") }}
+          </p>
+        </div>
+
         <!-- OpenAI 生图链路配置 + Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -4390,6 +4460,10 @@ import {
   supportsGroupOpenAIFast,
 } from "./groupsOpenAIFast";
 import {
+  normalizeGroupImageReturnUrl,
+  supportsGroupImageReturnUrl,
+} from "./groupsImageReturnUrl";
+import {
   addCustomModelAllowlistItem,
   buildModelAllowlistConfig,
   createModelAllowlistState as createInitialModelAllowlistState,
@@ -5040,6 +5114,8 @@ const createForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI 生图链路开关（仅 openai 平台使用），默认 true（走上游 Responses 链路）
   image_use_responses_api: true,
+  // 生图返回 URL 开关（仅 openai / gemini 平台使用），默认 false（老客户端行为不变）
+  image_return_url: false,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5411,6 +5487,8 @@ const editForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI 生图链路开关（仅 openai 平台使用），默认 true（走上游 Responses 链路）
   image_use_responses_api: true,
+  // 生图返回 URL 开关（仅 openai / gemini 平台使用），默认 false（老客户端行为不变）
+  image_return_url: false,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5847,6 +5925,7 @@ const closeCreateModal = () => {
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
   createForm.image_use_responses_api = true;
+  createForm.image_return_url = false;
   createForm.allow_batch_image_generation = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
@@ -6015,6 +6094,10 @@ const handleCreateGroup = async () => {
         createForm.platform === "openai"
           ? createForm.image_use_responses_api
           : undefined,
+      image_return_url: normalizeGroupImageReturnUrl(
+        createForm.platform,
+        createForm.image_return_url,
+      ),
       image_quality_billing:
         createForm.platform === "openai"
           ? createForm.image_quality_billing
@@ -6140,6 +6223,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.image_use_responses_api = group.image_use_responses_api ?? true;
+  editForm.image_return_url = group.image_return_url ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
@@ -6385,6 +6469,10 @@ const handleUpdateGroup = async () => {
         editForm.platform === "openai"
           ? editForm.image_use_responses_api
           : undefined,
+      image_return_url: normalizeGroupImageReturnUrl(
+        editForm.platform,
+        editForm.image_return_url,
+      ),
       image_quality_billing:
         editForm.platform === "openai"
           ? editForm.image_quality_billing

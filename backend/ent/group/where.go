@@ -340,6 +340,11 @@ func ImageUseResponsesAPI(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageUseResponsesAPI, v))
 }
 
+// ImageReturnURL applies equality check predicate on the "image_return_url" field. It's identical to ImageReturnURLEQ.
+func ImageReturnURL(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageReturnURL, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -2583,6 +2588,16 @@ func ImageUseResponsesAPIEQ(v bool) predicate.Group {
 // ImageUseResponsesAPINEQ applies the NEQ predicate on the "image_use_responses_api" field.
 func ImageUseResponsesAPINEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldImageUseResponsesAPI, v))
+}
+
+// ImageReturnURLEQ applies the EQ predicate on the "image_return_url" field.
+func ImageReturnURLEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageReturnURL, v))
+}
+
+// ImageReturnURLNEQ applies the NEQ predicate on the "image_return_url" field.
+func ImageReturnURLNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageReturnURL, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

@@ -300,6 +300,8 @@ type CreateGroupInput struct {
 	ModelAllowlist              GroupModelAllowlist
 	// ImageUseResponsesAPI OAuth 生图链路开关（仅 openai 平台使用），nil 时默认 true（走 Responses 链路）
 	ImageUseResponsesAPI *bool
+	// ImageReturnURL 生图返回对象存储 URL 开关（仅 openai / gemini 平台使用），nil 时默认 false（行为不变）
+	ImageReturnURL *bool
 	// CodexModelsManifestConfig 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
@@ -387,6 +389,8 @@ type UpdateGroupInput struct {
 	ModelAllowlist              *GroupModelAllowlist
 	// ImageUseResponsesAPI OAuth 生图链路开关（仅 openai 平台使用），nil 表示未提供不改动。
 	ImageUseResponsesAPI *bool
+	// ImageReturnURL 生图返回对象存储 URL 开关（仅 openai / gemini 平台使用），nil 表示未提供不改动。
+	ImageReturnURL *bool
 	// CodexModelsManifestConfig nil 表示不修改；非 openai 平台会被归一化为关闭。
 	CodexModelsManifestConfig *GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。

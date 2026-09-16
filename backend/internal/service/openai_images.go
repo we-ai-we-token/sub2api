@@ -917,6 +917,16 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	// 生图返回 URL（分组开关 + 客户端显式 response_format=url 才生效）。
+	//
+	// 放在计费统计之前是安全的，本链路（APIKey / Gemini 透传）的计费不依赖 base64：
+	// openAIImageOutputCounter.addDataArray 认 url 或 b64_json 任一存在即计数，
+	// 尺寸取 data[i].size 元数据而非解码像素；Rewrite 只改写 url / b64_json 两个键，
+	// size 原样保留。（OAuth/Responses 链路则相反，那条要解 base64 读像素，
+	// 改写必须排在 reconcileOpenAIResponsesImageResultSizes 之后 —— 另一个 commit 处理。）
+	//
+	// 失败自动降级为原样返回 base64，见 rewriteOpenAIImagesToStorageURL。
+	body = s.rewriteOpenAIImagesToStorageURL(ctx, c, parsed, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {

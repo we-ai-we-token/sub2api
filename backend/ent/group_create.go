@@ -886,6 +886,20 @@ func (_c *GroupCreate) SetNillableImageUseResponsesAPI(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetImageReturnURL sets the "image_return_url" field.
+func (_c *GroupCreate) SetImageReturnURL(v bool) *GroupCreate {
+	_c.mutation.SetImageReturnURL(v)
+	return _c
+}
+
+// SetNillableImageReturnURL sets the "image_return_url" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageReturnURL(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageReturnURL(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1261,6 +1275,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageUseResponsesAPI
 		_c.mutation.SetImageUseResponsesAPI(v)
 	}
+	if _, ok := _c.mutation.ImageReturnURL(); !ok {
+		v := group.DefaultImageReturnURL
+		_c.mutation.SetImageReturnURL(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1470,6 +1488,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageUseResponsesAPI(); !ok {
 		return &ValidationError{Name: "image_use_responses_api", err: errors.New(`ent: missing required field "Group.image_use_responses_api"`)}
+	}
+	if _, ok := _c.mutation.ImageReturnURL(); !ok {
+		return &ValidationError{Name: "image_return_url", err: errors.New(`ent: missing required field "Group.image_return_url"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1784,6 +1805,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageUseResponsesAPI(); ok {
 		_spec.SetField(group.FieldImageUseResponsesAPI, field.TypeBool, value)
 		_node.ImageUseResponsesAPI = value
+	}
+	if value, ok := _c.mutation.ImageReturnURL(); ok {
+		_spec.SetField(group.FieldImageReturnURL, field.TypeBool, value)
+		_node.ImageReturnURL = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3016,6 +3041,18 @@ func (u *GroupUpsert) SetImageUseResponsesAPI(v bool) *GroupUpsert {
 // UpdateImageUseResponsesAPI sets the "image_use_responses_api" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateImageUseResponsesAPI() *GroupUpsert {
 	u.SetExcluded(group.FieldImageUseResponsesAPI)
+	return u
+}
+
+// SetImageReturnURL sets the "image_return_url" field.
+func (u *GroupUpsert) SetImageReturnURL(v bool) *GroupUpsert {
+	u.Set(group.FieldImageReturnURL, v)
+	return u
+}
+
+// UpdateImageReturnURL sets the "image_return_url" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageReturnURL() *GroupUpsert {
+	u.SetExcluded(group.FieldImageReturnURL)
 	return u
 }
 
@@ -4391,6 +4428,20 @@ func (u *GroupUpsertOne) SetImageUseResponsesAPI(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateImageUseResponsesAPI() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageUseResponsesAPI()
+	})
+}
+
+// SetImageReturnURL sets the "image_return_url" field.
+func (u *GroupUpsertOne) SetImageReturnURL(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageReturnURL(v)
+	})
+}
+
+// UpdateImageReturnURL sets the "image_return_url" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageReturnURL() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageReturnURL()
 	})
 }
 
@@ -5949,6 +6000,20 @@ func (u *GroupUpsertBulk) SetImageUseResponsesAPI(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateImageUseResponsesAPI() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageUseResponsesAPI()
+	})
+}
+
+// SetImageReturnURL sets the "image_return_url" field.
+func (u *GroupUpsertBulk) SetImageReturnURL(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageReturnURL(v)
+	})
+}
+
+// UpdateImageReturnURL sets the "image_return_url" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageReturnURL() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageReturnURL()
 	})
 }
 

@@ -161,6 +161,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
 		ModelAllowlist:              g.ModelAllowlist,
 		ImageUseResponsesAPI:        g.ImageUseResponsesAPI,
+		ImageReturnURL:              g.ImageReturnURL,
 		CodexModelsManifestConfig:   g.CodexModelsManifestConfig,
 		SupportedModelScopes:        g.SupportedModelScopes,
 		AccountCount:                g.AccountCount,

@@ -22174,6 +22174,7 @@ type GroupMutation struct {
 	model_allowlist                         *domain.GroupModelAllowlist
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
 	image_use_responses_api                 *bool
+	image_return_url                        *bool
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	max_reasoning_effort                    *string
@@ -25526,6 +25527,42 @@ func (m *GroupMutation) ResetImageUseResponsesAPI() {
 	m.image_use_responses_api = nil
 }
 
+// SetImageReturnURL sets the "image_return_url" field.
+func (m *GroupMutation) SetImageReturnURL(b bool) {
+	m.image_return_url = &b
+}
+
+// ImageReturnURL returns the value of the "image_return_url" field in the mutation.
+func (m *GroupMutation) ImageReturnURL() (r bool, exists bool) {
+	v := m.image_return_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageReturnURL returns the old "image_return_url" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageReturnURL(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageReturnURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageReturnURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageReturnURL: %w", err)
+	}
+	return oldValue.ImageReturnURL, nil
+}
+
+// ResetImageReturnURL resets all changes to the "image_return_url" field.
+func (m *GroupMutation) ResetImageReturnURL() {
+	m.image_return_url = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -26211,7 +26248,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 71)
+	fields := make([]string, 0, 72)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26404,6 +26441,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.image_use_responses_api != nil {
 		fields = append(fields, group.FieldImageUseResponsesAPI)
 	}
+	if m.image_return_url != nil {
+		fields = append(fields, group.FieldImageReturnURL)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -26561,6 +26601,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.CodexModelsManifestConfig()
 	case group.FieldImageUseResponsesAPI:
 		return m.ImageUseResponsesAPI()
+	case group.FieldImageReturnURL:
+		return m.ImageReturnURL()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	case group.FieldMaxReasoningEffort:
@@ -26712,6 +26754,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldCodexModelsManifestConfig(ctx)
 	case group.FieldImageUseResponsesAPI:
 		return m.OldImageUseResponsesAPI(ctx)
+	case group.FieldImageReturnURL:
+		return m.OldImageReturnURL(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	case group.FieldMaxReasoningEffort:
@@ -27182,6 +27226,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImageUseResponsesAPI(v)
+		return nil
+	case group.FieldImageReturnURL:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageReturnURL(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -27988,6 +28039,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImageUseResponsesAPI:
 		m.ResetImageUseResponsesAPI()
+		return nil
+	case group.FieldImageReturnURL:
+		m.ResetImageReturnURL()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

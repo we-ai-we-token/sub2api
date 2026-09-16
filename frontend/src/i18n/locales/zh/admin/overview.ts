@@ -1161,6 +1161,11 @@ export default {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      imageReturnUrl: {
+        title: '生图返回 URL',
+        enabled: '生图返回对象存储 URL',
+        hint: '开启后，客户端在生图请求里显式传 response_format=url 时，网关会把图片转存到对象存储，响应的 data[].url 返回短链接（预签名，过期时间见「设置 → 备份 → 图片对象存储」，默认 24 小时），并移除 data[].b64_json。客户端未要求 url 时行为完全不变，不影响老客户端。需先在「设置 → 备份 → 图片对象存储」里配置并启用对象存储；上传失败会自动降级为返回 base64。仅 openai / gemini 平台可用。',
+      },
       openaiImage: {
         title: 'OpenAI 生图链路',
         useResponsesApi: '使用 Responses 生图链路',
