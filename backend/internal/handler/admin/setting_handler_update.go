@@ -346,6 +346,8 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// Subscription feature switch (user-facing subscription surface; see SettingKeySubscriptionEnabled)
+	SubscriptionEnabled *bool `json:"subscription_enabled"`
 	// Hide/deduct auto-injected Codex instructions cache tokens (admin-only)
 	OpenAISynthCacheHidden *bool `json:"openai_synth_cache_hidden_enabled"`
 
@@ -1954,6 +1956,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		SubscriptionEnabled: func() bool {
+			if req.SubscriptionEnabled != nil {
+				return *req.SubscriptionEnabled
+			}
+			return previousSettings.SubscriptionEnabled
+		}(),
 		OpenAISynthCacheHidden: func() bool {
 			if req.OpenAISynthCacheHidden != nil {
 				return *req.OpenAISynthCacheHidden
@@ -2405,6 +2413,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		SubscriptionEnabled:      updatedSettings.SubscriptionEnabled,
 		OpenAISynthCacheHidden:   updatedSettings.OpenAISynthCacheHidden,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,

@@ -432,6 +432,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
+	// Subscription feature switch
+	updates[SettingKeySubscriptionEnabled] = strconv.FormatBool(settings.SubscriptionEnabled)
 	// Hide/deduct auto-injected Codex instructions cache switch
 	updates[SettingKeyOpenAISynthCacheHidden] = strconv.FormatBool(settings.OpenAISynthCacheHidden)
 

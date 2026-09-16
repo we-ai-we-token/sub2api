@@ -954,17 +954,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		return nil, upErr
 	}
 
-	// A retired/configured Responses driver is not an image-model quota failure.
-	// Surface the actionable upstream error instead of cooling every image account
-	// and eventually hiding the configuration problem behind a generic 503.
-	if account.IsOpenAIOAuthLike() &&
-		isOpenAICodexPlanGatedModelError(resp.StatusCode, body) &&
-		strings.Contains(extractUpstreamErrorMessage(body), "'"+openAIImagesResponsesMainModelValue()+"'") {
+	// 主控不可用不代表图片模型配额耗尽，直接透传，避免误冷却整个图片账号池。
+	if account.IsOpenAIOAuthLike() && isOpenAIImagesMainModelError(resp.StatusCode, body) {
 		upErr := openAIImagesUpstreamErrorFromHTTP(resp.StatusCode, resp.Header, body)
 		writeOpenAIImagesUpstreamErrorResponse(c, upErr)
 		return nil, upErr
 	}
-
 	// Track rate limits / decide whether to disable the account (secondary failover).
 	var modelForCooldown string
 	if len(requestedModel) > 0 {
@@ -1170,12 +1165,9 @@ func openAIImagesToolUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		return OpenAIUsage{}, false
 	}
 	imageInputTokens, _ := boundedJSONNonNegativeInt(value.Get("input_tokens_details.image_tokens"))
-	if imageInputTokens > inputTokens {
-		imageInputTokens = inputTokens
-	}
 	return OpenAIUsage{
 		InputTokens:       inputTokens,
-		ImageInputTokens:  imageInputTokens,
+		ImageInputTokens:  min(imageInputTokens, inputTokens),
 		OutputTokens:      outputTokens,
 		ImageOutputTokens: imageOutputTokens,
 	}, true
@@ -1841,7 +1833,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	// 流式 + n>1 属输入非法，两条链路一致拒绝（置于分组分流之前统一收口）。
+	// 分组开关：开（默认）走上游 Responses 链路，关走二开专用 codex images 端点链路。
+	if groupUsesResponsesImageAPI(c) {
+		return s.forwardOpenAIImagesOAuthResponses(ctx, c, account, parsed, channelMappedModel)
+	}
+	// 流式 + n>1 二开专用 codex images 端点不支持，直接拒绝。
+	// 注意：这道守卫原本置于分组分流之前，但 v0.2.5 起上游 direct images 链路
+	// 已支持 stream + n>1（见 openai_images_direct.go），放在分流前会把上游能力一并挡掉，
+	// 故下移到只作用于二开链路。
 	if parsed.Stream && parsed.N > 1 {
 		upstreamErr := &OpenAIImagesUpstreamError{
 			StatusCode: http.StatusBadRequest,
@@ -1852,10 +1851,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		}
 		writeOpenAIImagesUpstreamErrorResponse(c, upstreamErr)
 		return nil, upstreamErr
-	}
-	// 分组开关：开（默认）走上游 Responses 链路，关走二开专用 codex images 端点链路。
-	if groupUsesResponsesImageAPI(c) {
-		return s.forwardOpenAIImagesOAuthResponses(ctx, c, account, parsed, channelMappedModel)
 	}
 	startTime := time.Now()
 	if parsed.Stream {
