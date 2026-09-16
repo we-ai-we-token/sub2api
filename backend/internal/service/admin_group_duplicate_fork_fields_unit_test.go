@@ -20,6 +20,7 @@ func forkGroupPricePointer(value float64) *float64 {
 func TestCloneGroupForDuplicateCopiesForkOnlyFields(t *testing.T) {
 	source := &Group{
 		ImageUseResponsesAPI: true,
+		ImageReturnURL:       true,
 		ImageQualityBilling:  true,
 		ImagePriceLow:        forkGroupPricePointer(0.011),
 		ImagePriceMedium:     forkGroupPricePointer(0.042),
@@ -29,6 +30,7 @@ func TestCloneGroupForDuplicateCopiesForkOnlyFields(t *testing.T) {
 	cloned := cloneGroupForDuplicate(source, "operation-fork-fields")
 
 	require.True(t, cloned.ImageUseResponsesAPI, "生图链路开关必须跟着复制，否则默认值 true 被写成 false")
+	require.True(t, cloned.ImageReturnURL, "生图返回 URL 开关必须跟着复制，否则复制出来的分组静默失去该能力")
 	require.True(t, cloned.ImageQualityBilling)
 	require.Equal(t, source.ImagePriceLow, cloned.ImagePriceLow)
 	require.Equal(t, source.ImagePriceMedium, cloned.ImagePriceMedium)
