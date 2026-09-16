@@ -103,9 +103,11 @@ export default {
         saved: 'S3 configuration saved'
       },
       imageStorage: {
-        title: 'Async image object storage',
-        description: 'Enables the asynchronous image endpoints and offloads generated images to object storage, keeping only short links in Redis. Shares the S3 client with backups and takes effect on save — no restart needed.',
+        title: 'Image object storage',
+        description: 'The two switches are independent and share the S3 credentials below. Takes effect on save — no restart needed.',
         enabled: 'Enable async image tasks',
+        syncUrlEnabled: 'Enable sync image URL',
+        syncUrlEnabledHint: 'When enabled, synchronous /v1/images/* responses upload images to object storage and return a short link — but only for groups with "Return image URL" on and only when the client explicitly sends response_format=url. Clients that do not ask for url are unaffected. openai / gemini platforms only.',
         reuseBackupS3: 'Reuse the backup S3 configuration above (different bucket/prefix only)',
         bucket: 'Bucket',
         bucketInherited: 'Leave empty to use the backup bucket',

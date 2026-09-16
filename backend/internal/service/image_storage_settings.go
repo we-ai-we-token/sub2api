@@ -27,8 +27,13 @@ type ImageStorageFactory func(ctx context.Context, cfg *config.ImageStorageConfi
 // ReuseBackupS3 为真时不保存自己的凭证，直接借用数据库备份已配置的 S3 端点与密钥，
 // 只用自己的 Bucket/Prefix 区分对象；这样"数据走 backups/、图片走 images/"无需重复配置。
 type ImageStorageSettings struct {
-	Enabled       bool `json:"enabled"`
-	ReuseBackupS3 bool `json:"reuse_backup_s3"`
+	// Enabled 异步生图对象存储开关（/v1/images/*/async），语义保持不变。
+	Enabled bool `json:"enabled"`
+	// SyncURLEnabled 同步生图返回 URL 开关，与 Enabled 相互独立：
+	// 开启后，分组 image_return_url 打开且客户端显式传 response_format=url 时，
+	// 同步 /v1/images/* 的图片转存对象存储并返回短链接。
+	SyncURLEnabled bool `json:"sync_url_enabled"`
+	ReuseBackupS3  bool `json:"reuse_backup_s3"`
 
 	Bucket           string `json:"bucket"` // 留空且复用备份时，沿用备份桶
 	Prefix           string `json:"prefix"`
@@ -61,7 +66,9 @@ type ImageStorageSettingService struct {
 	mu       sync.Mutex
 	resolved bool
 	uploader *ImageResultUploader
-	enabled  bool
+	// enabled / syncURLEnabled 是两个相互独立的门控，共用同一份 uploader 与凭证。
+	enabled        bool // 异步生图对象存储
+	syncURLEnabled bool // 同步生图返回 URL
 }
 
 func NewImageStorageSettingService(
@@ -83,46 +90,59 @@ func NewImageStorageSettingService(
 // Resolver 返回可注入 ImageTaskService 的解析函数。
 func (s *ImageStorageSettingService) Resolver() ImageStorageResolver {
 	return func() (*ImageResultUploader, bool) {
-		return s.resolve()
+		uploader, enabled, _ := s.resolve()
+		return uploader, enabled
 	}
 }
 
-func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
+// SyncURLResolver 供同步生图返回 URL 使用，与异步开关相互独立：
+// 只开异步不影响同步，只开同步也不会让异步生图接口可用。
+func (s *ImageStorageSettingService) SyncURLResolver() ImageStorageResolver {
+	return func() (*ImageResultUploader, bool) {
+		uploader, _, syncEnabled := s.resolve()
+		return uploader, syncEnabled
+	}
+}
+
+// resolve 返回 (uploader, 异步开关, 同步开关)。两个开关共用同一份凭证与 uploader，
+// 任一开启且凭证齐全就构建客户端；都关闭时不构建。
+func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool, bool) {
 	if s == nil {
-		return nil, false
+		return nil, false, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.resolved {
-		return s.uploader, s.enabled
+		return s.uploader, s.enabled, s.syncURLEnabled
 	}
 
 	ctx := context.Background()
 	s.resolved = true
-	s.uploader, s.enabled = nil, false
+	s.uploader, s.enabled, s.syncURLEnabled = nil, false, false
 
 	cfg, err := s.effectiveConfig(ctx)
 	if err != nil {
-		logger.L().Warn("image_storage.settings_load_failed; async image tasks stay disabled", zap.Error(err))
-		return nil, false
+		logger.L().Warn("image_storage.settings_load_failed; object storage stays disabled", zap.Error(err))
+		return nil, false, false
 	}
-	if !cfg.Enabled {
-		return nil, false
+	if !cfg.Enabled && !cfg.SyncURLEnabled {
+		return nil, false, false
 	}
 	if !cfg.IsConfigured() {
-		logger.L().Warn("image_storage is enabled but not fully configured; async image tasks are disabled",
+		logger.L().Warn("image_storage is enabled but not fully configured; object storage is disabled",
 			zap.Strings("missing_keys", cfg.MissingCredentialKeys()))
-		return nil, false
+		return nil, false, false
 	}
 
 	storage, err := s.factory(ctx, cfg)
 	if err != nil {
-		logger.L().Error("image_storage.client_build_failed; async image tasks stay disabled", zap.Error(err))
-		return nil, false
+		logger.L().Error("image_storage.client_build_failed; object storage stays disabled", zap.Error(err))
+		return nil, false, false
 	}
 	s.uploader = NewImageResultUploader(storage, cfg.Prefix, cfg.MaxDownloadByte, nil)
-	s.enabled = true
-	return s.uploader, true
+	s.enabled = cfg.Enabled
+	s.syncURLEnabled = cfg.SyncURLEnabled
+	return s.uploader, s.enabled, s.syncURLEnabled
 }
 
 // Invalidate 丢弃缓存，使下一次请求按最新设置重新解析。
@@ -240,6 +260,7 @@ func (s *ImageStorageSettingService) effectiveConfig(ctx context.Context) (*conf
 func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, in *ImageStorageSettings) (*config.ImageStorageConfig, error) {
 	cfg := &config.ImageStorageConfig{
 		Enabled:         in.Enabled,
+		SyncURLEnabled:  in.SyncURLEnabled,
 		Bucket:          in.Bucket,
 		Prefix:          in.Prefix,
 		PublicBaseURL:   in.PublicBaseURL,

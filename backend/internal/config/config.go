@@ -251,9 +251,10 @@ type BatchImageConfig struct {
 // Enabled 同时作为异步图片任务功能的总开关：未启用或未配置完整凭证时，
 // 异步生图接口整体禁用，避免把上游返回的大 base64 结果塞进 Redis。
 type ImageStorageConfig struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	Endpoint        string `mapstructure:"endpoint"` // e.g. https://<account_id>.r2.cloudflarestorage.com
-	Region          string `mapstructure:"region"`   // R2 用 "auto"
+	Enabled         bool   `mapstructure:"enabled"`          // 异步生图对象存储（/v1/images/*/async）
+	SyncURLEnabled  bool   `mapstructure:"sync_url_enabled"` // 同步生图返回 URL（配合分组开关 image_return_url）
+	Endpoint        string `mapstructure:"endpoint"`         // e.g. https://<account_id>.r2.cloudflarestorage.com
+	Region          string `mapstructure:"region"`           // R2 用 "auto"
 	Bucket          string `mapstructure:"bucket"`
 	AccessKeyID     string `mapstructure:"access_key_id"`
 	SecretAccessKey string `mapstructure:"secret_access_key"`
@@ -2244,6 +2245,7 @@ func setDefaults() {
 
 	// Image storage (async image task result offload to S3-compatible object storage)
 	viper.SetDefault("image_storage.enabled", false)
+	viper.SetDefault("image_storage.sync_url_enabled", false)
 	viper.SetDefault("image_storage.region", "auto")
 	viper.SetDefault("image_storage.prefix", "images/")
 	viper.SetDefault("image_storage.force_path_style", false)

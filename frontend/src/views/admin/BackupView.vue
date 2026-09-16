@@ -65,10 +65,16 @@
               {{ t('admin.backup.imageStorage.description') }}
             </p>
           </div>
-          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input v-model="imageStorageForm.enabled" type="checkbox" />
-            <span>{{ t('admin.backup.imageStorage.enabled') }}</span>
-          </label>
+          <div class="flex flex-col gap-2">
+            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="imageStorageForm.enabled" type="checkbox" />
+              <span>{{ t('admin.backup.imageStorage.enabled') }}</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="imageStorageForm.sync_url_enabled" type="checkbox" />
+              <span>{{ t('admin.backup.imageStorage.syncUrlEnabled') }}</span>
+            </label>
+          </div>
         </div>
 
         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -447,6 +453,7 @@ const testingS3 = ref(false)
 // to reuse the credentials configured above and only differ by prefix.
 const imageStorageForm = ref<ImageStorageConfig>({
   enabled: false,
+  sync_url_enabled: false,
   reuse_backup_s3: true,
   bucket: '',
   prefix: 'images/',

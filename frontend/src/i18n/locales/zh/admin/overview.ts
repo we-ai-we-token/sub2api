@@ -103,9 +103,11 @@ export default {
         saved: 'S3 配置已保存'
       },
       imageStorage: {
-        title: '异步生图对象存储',
-        description: '开启后，异步生图接口可用，生成结果转存到对象存储，只把短链接写入 Redis。与备份共用同一套 S3 客户端，保存后立即生效，无需重启。',
+        title: '生图对象存储',
+        description: '两个开关相互独立，共用下面这一套 S3 凭证。保存后立即生效，无需重启。',
         enabled: '启用异步生图',
+        syncUrlEnabled: '启用同步生图 URL',
+        syncUrlEnabledHint: '开启后，分组打开「生图返回 URL」且客户端显式传 response_format=url 时，同步 /v1/images/* 的图片转存对象存储并返回短链接；客户端未要求 url 时行为完全不变。仅 openai / gemini 平台。',
         reuseBackupS3: '复用上方备份的 S3 配置（只用不同的存储桶/前缀）',
         bucket: '存储桶',
         bucketInherited: '留空则沿用备份存储桶',

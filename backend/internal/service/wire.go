@@ -694,7 +694,7 @@ func ProvideImageTaskService(
 	settings *ImageStorageSettingService,
 	gateway *OpenAIGatewayService,
 ) *ImageTaskService {
-	gateway.SetImageStorageResolver(settings.Resolver())
+	gateway.SetImageStorageResolver(settings.SyncURLResolver())
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 

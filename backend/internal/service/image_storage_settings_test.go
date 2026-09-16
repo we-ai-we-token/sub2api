@@ -107,20 +107,20 @@ func TestImageStorageSettingsToggleTakesEffectWithoutRestart(t *testing.T) {
 		Prefix: "backups/",
 	})
 
-	uploader, enabled := svc.resolve()
+	uploader, enabled, _ := svc.resolve()
 	require.False(t, enabled, "disabled until an admin turns it on")
 	require.Nil(t, uploader)
 
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true})
 	require.NoError(t, err)
 
-	uploader, enabled = svc.resolve()
+	uploader, enabled, _ = svc.resolve()
 	require.True(t, enabled, "saving the setting must enable the feature immediately")
 	require.NotNil(t, uploader)
 
 	_, err = svc.Update(ctx, ImageStorageSettings{Enabled: false, ReuseBackupS3: true})
 	require.NoError(t, err)
-	_, enabled = svc.resolve()
+	_, enabled, _ = svc.resolve()
 	require.False(t, enabled, "turning it back off must also apply immediately")
 
 	require.Len(t, *built, 1, "the S3 client is built only when the feature is on")
@@ -137,7 +137,7 @@ func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
 
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true, Prefix: "images"})
 	require.NoError(t, err)
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled)
 
 	require.Len(t, *built, 1)
@@ -179,7 +179,7 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 	require.Empty(t, fetched.SecretAccessKey)
 	require.True(t, svc.SecretConfigured(ctx))
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled)
 	require.Equal(t, "super-secret", (*built)[0].SecretAccessKey, "the stored secret must be decrypted before use")
 
@@ -228,7 +228,7 @@ func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, Bucket: "my-images"})
 	require.NoError(t, err)
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.False(t, enabled, "missing credentials must not enable the feature")
 	require.Empty(t, *built, "no client is built from an incomplete configuration")
 }
@@ -242,7 +242,7 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 		Prefix: "images/", MaxDownloadByte: 1024,
 	})
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled, "config.yaml still enables the feature when nothing is stored yet")
 	require.Equal(t, "yaml-bucket", (*built)[0].Bucket)
 
@@ -251,4 +251,42 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 	require.True(t, fetched.Enabled)
 	require.Equal(t, "yaml-bucket", fetched.Bucket)
 	require.Empty(t, fetched.SecretAccessKey)
+}
+
+// 两个开关必须相互独立：只开异步不得让同步链路可用，反之亦然。
+// 独立成用例是因为二者共用同一份 uploader 与凭证，很容易在重构时被并成一个门控。
+func TestImageStorageSettingService_SwitchesAreIndependent(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		asyncOn      bool
+		syncOn       bool
+		wantUploader bool
+	}{
+		{"都关", false, false, false},
+		{"只开异步", true, false, true},
+		{"只开同步", false, true, true},
+		{"都开", true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+				Enabled:         tc.asyncOn,
+				SyncURLEnabled:  tc.syncOn,
+				Bucket:          "bucket",
+				AccessKeyID:     "ak",
+				SecretAccessKey: "sk",
+				Prefix:          "images/",
+			})
+			asyncUploader, asyncEnabled := svc.Resolver()()
+			syncUploader, syncEnabled := svc.SyncURLResolver()()
+			require.Equal(t, tc.asyncOn, asyncEnabled, "异步开关应只由 Enabled 决定")
+			require.Equal(t, tc.syncOn, syncEnabled, "同步开关应只由 SyncURLEnabled 决定")
+			if tc.wantUploader {
+				require.NotNil(t, asyncUploader, "凭证齐全且任一开关开启时应构建 uploader")
+				require.Same(t, asyncUploader, syncUploader, "两个开关共用同一份 uploader")
+			} else {
+				require.Nil(t, asyncUploader)
+				require.Nil(t, syncUploader)
+			}
+		})
+	}
 }
