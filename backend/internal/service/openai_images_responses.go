@@ -1941,7 +1941,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 			proxyURL = account.Proxy.URL()
 		}
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		// 走 doOpenAIUpstream 而非 httpUpstream.Do：codex-images 分支（分组
+		// image_use_responses_api=false）同样是 OpenAI OAuth 出站，必须和 Responses 生图链路
+		// （openai_images_responses_upstream.go:440）共用同一个插件接管点。否则同一个账号会
+		// 出现「聊天/Responses 生图走插件指纹、codex-images 生图走 Go 栈指纹」的一号两指纹。
+		// 插件未安装或未命中灰度时 doOpenAIUpstream 原样回落 httpUpstream.Do，行为不变。
+		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -2089,7 +2094,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			proxyURL = account.Proxy.URL()
 		}
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		// 走 doOpenAIUpstream 而非 httpUpstream.Do：codex-images 分支（分组
+		// image_use_responses_api=false）同样是 OpenAI OAuth 出站，必须和 Responses 生图链路
+		// （openai_images_responses_upstream.go:440）共用同一个插件接管点。否则同一个账号会
+		// 出现「聊天/Responses 生图走插件指纹、codex-images 生图走 Go 栈指纹」的一号两指纹。
+		// 插件未安装或未命中灰度时 doOpenAIUpstream 原样回落 httpUpstream.Do，行为不变。
+		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
