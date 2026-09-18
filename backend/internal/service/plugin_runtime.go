@@ -407,11 +407,20 @@ func headersToPlugin(headers http.Header) map[string]*pluginv1.HeaderValues {
 	return out
 }
 
+// headersFromPlugin 必须用 Add 而不是直接写 map：插件侧的 header key 大小写不受约束
+// （Rust/http crate 的 HeaderName 恒为小写，gRPC 契约也没规定大小写），而 http.Header.Get
+// 会先把查询 key 过 textproto.CanonicalMIMEHeaderKey 再查 map。直接写 map 会让
+// resp.Header.Get("x-request-id") / Get("x-codex-turn-state") 静默返回空字符串，
+// 进而丢掉 usage_logs.upstream_request_id、删掉 Codex turn-state、失去 models manifest 的 ETag。
+// Add 会做同样的 canonical 化，两侧因此对齐。
 func headersFromPlugin(headers map[string]*pluginv1.HeaderValues) http.Header {
 	out := make(http.Header, len(headers))
 	for key, values := range headers {
-		if values != nil {
-			out[key] = append([]string(nil), values.Values...)
+		if values == nil {
+			continue
+		}
+		for _, value := range values.Values {
+			out.Add(key, value)
 		}
 	}
 	return out
