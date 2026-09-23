@@ -29,7 +29,8 @@ func buildGeminiAIStudioModelActionURL(baseURL, model, action string, stream boo
 	if trimmedModel == "" {
 		return "", errors.New("gemini model is required")
 	}
-	if err := validateUpstreamPathSegment("gemini model", trimmedModel); err != nil {
+	escapedModel, err := geminiUpstreamModelPathSegment(trimmedModel)
+	if err != nil {
 		return "", err
 	}
 	trimmedAction := strings.TrimSpace(action)
@@ -37,7 +38,7 @@ func buildGeminiAIStudioModelActionURL(baseURL, model, action string, stream boo
 		return "", fmt.Errorf("unsupported gemini action: %s", trimmedAction)
 	}
 
-	fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", trimmedBase, trimmedModel, trimmedAction)
+	fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", trimmedBase, escapedModel, trimmedAction)
 	if stream {
 		fullURL += "?alt=sse"
 	}
