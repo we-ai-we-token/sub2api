@@ -290,9 +290,8 @@ func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
 }
 
 func isOpenAICompatibleModelNotFoundBody(respBody []byte) bool {
-	code := strings.TrimSpace(extractUpstreamErrorCode(respBody))
-	if code != "" {
-		return strings.EqualFold(code, "model_not_found")
+	if decided, notFound := openAICompatibleModelNotFoundByCode(respBody); decided {
+		return notFound
 	}
 
 	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
