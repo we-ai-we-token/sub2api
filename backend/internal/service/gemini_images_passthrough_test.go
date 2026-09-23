@@ -37,10 +37,13 @@ func TestIsGeminiImageGenerationModel(t *testing.T) {
 	}
 }
 
-func TestValidateOpenAIImagesModelAcceptsGeminiImageModels(t *testing.T) {
-	require.NoError(t, validateOpenAIImagesModel("gemini-2.5-flash-image"))
-	require.Error(t, validateOpenAIImagesModel("gemini-2.5-flash"))
-	require.Error(t, validateOpenAIImagesModel("dall-e-3"))
+// v0.2.8 起 /v1/images 解析改用上游的 validateCompatibleImagesModel 放行 Gemini 生图模型；
+// validateOpenAIImagesModel 只服务 OAuth 原生链路，Gemini 模型名不能进去。
+func TestValidateCompatibleImagesModelAcceptsGeminiImageModels(t *testing.T) {
+	require.NoError(t, validateCompatibleImagesModel("gemini-2.5-flash-image"))
+	require.Error(t, validateCompatibleImagesModel("gemini-2.5-flash"))
+	require.Error(t, validateCompatibleImagesModel("dall-e-3"))
+	require.Error(t, validateOpenAIImagesModel("gemini-2.5-flash-image"))
 }
 
 func geminiPassthroughAccount() *Account {
