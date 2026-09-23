@@ -194,7 +194,11 @@ func TestContentModerationCheck_ReminderPolicyPreserved(t *testing.T) {
 			}
 			switch name {
 			case "observe":
-				require.Eventually(t, func() bool { return calls.Load() == 1 }, time.Second, time.Millisecond*10)
+				// 二开：observe 模式下关键词命中走 keyword_observe（放行 + 标记 + 只记录），不调语义 API；
+				// reminder 里的关键词照样算命中（上游 7b4de8b6a 的防绕过口径）。
+				require.True(t, decision.Flagged)
+				requireContentModerationLogCount(t, repo, 1)
+				require.Never(t, func() bool { return calls.Load() != 0 }, 100*time.Millisecond, time.Millisecond*10)
 			case "combined_miss":
 				require.Equal(t, int32(1), calls.Load())
 			default:

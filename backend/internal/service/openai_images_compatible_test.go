@@ -140,6 +140,7 @@ func TestCompatibleImagesNativeAccountsRejectGeminiBeforeForwarding(t *testing.T
 				}
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
 				c.Request = httptest.NewRequest(http.MethodPost, openAIImagesGenerationsEndpoint, nil)
+				c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 				upstream := &httpUpstreamRecorder{}
 				svc := &OpenAIGatewayService{httpUpstream: upstream}
 				_, err := svc.ForwardImages(context.Background(), c, account, nil, &OpenAIImagesRequest{Model: model}, "")
