@@ -266,6 +266,10 @@ func classifyImageGenerationErrorType(c *gin.Context, wireStatus int, hasUpstrea
 		return "permission_error"
 	case wireStatus == 401:
 		return "authentication_error"
+	case wireStatus == statusClientClosedRequest:
+		// 上游 v0.2.9 起客户端断开统一标 499（含排队/等槽阶段）；无上游上下文说明是客户端
+		// 主动放弃，别混进 invalid_request_error。带上游上下文的 499 已在上面记为 upstream_error。
+		return "client_canceled"
 	case wireStatus >= 500:
 		return "api_error"
 	case wireStatus >= 400:
