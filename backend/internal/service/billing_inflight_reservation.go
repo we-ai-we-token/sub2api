@@ -321,6 +321,8 @@ type InflightEstimateRequest struct {
 	// 音频：模式（tts/stt/realtime）与计量单位（百万字符/小时/分钟）。
 	AudioMode  string
 	AudioUnits float64
+	// ImageQuality 二开：请求显式指定的图片质量，供按质量计费分组选估算档位（见 billing_inflight_reservation_fork.go）。
+	ImageQuality string
 }
 
 // inflightEstimateDeps 两种网关 service 共用的估算依赖。
@@ -517,7 +519,7 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 		}
 		if d.billing != nil {
 			cfgImg := imagePriceConfigFromAPIKey(apiKey)
-			for _, tier := range []string{ImageBillingSize1K, ImageBillingSize2K, ImageBillingSize4K} {
+			for _, tier := range inflightImageEstimateTiers(apiKey, req.ImageQuality) {
 				if b := d.billing.CalculateImageCost(model, tier, units, cfgImg, imageRate); b != nil && b.ActualCost > cost {
 					cost = b.ActualCost
 				}

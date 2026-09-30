@@ -143,6 +143,20 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 		return
 	}
 
+	// 余额模式在途预留（与上游 /v1/images 同口径）；必须在构造 requestCtx 之前，
+	// 计费任务经 c.Request.Context() 接管预留句柄，扣减余额缓存后才释放。
+	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: requestModel, BodyBytes: len(body), Kind: service.InflightEstimateImage, Units: parsed.N})
+	if inflightErr != nil {
+		reqLog.Info("gemini_images.inflight_reservation_rejected", zap.Error(inflightErr))
+		status, code, message, retryAfter := billingErrorDetails(inflightErr)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
+	defer inflightDone()
+
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 
 	maxAccountSwitches := h.maxAccountSwitches
