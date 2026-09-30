@@ -12,6 +12,10 @@ describe('isLocalRuleModerationRow', () => {
     expect(isLocalRuleModerationRow({ action: 'allow', highest_category: 'keyword' })).toBe(true)
   })
 
+  it('treats allowlisted users\' rewritten hash hits (allow + hash category) as not API-audited', () => {
+    expect(isLocalRuleModerationRow({ action: 'allow', highest_category: 'hash' })).toBe(true)
+  })
+
   it('keeps API-audited rows on the legacy audit source label', () => {
     expect(isLocalRuleModerationRow({ action: 'allow', highest_category: 'sexual' })).toBe(false)
     expect(isLocalRuleModerationRow({ action: 'block', highest_category: 'violence' })).toBe(false)
