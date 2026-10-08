@@ -18,6 +18,25 @@ func IsGeminiImageGenerationModel(model string) bool {
 	return strings.HasPrefix(model, "gemini-") && strings.Contains(model, "image")
 }
 
+// geminiImageModelsNamedWithoutImage 二开：名字里不含 "image" 的 Gemini 生图模型，只能逐个点名。
+// 刻意不用 "nano-banana" 子串：AI Studio 还挂着 nano-banana / nano-banana-pro 等没验证过的名字。
+var geminiImageModelsNamedWithoutImage = map[string]struct{}{
+	"gemini-nano-banana-2.1": {},
+}
+
+func isGeminiImageModelNamedWithoutImage(model string) bool {
+	_, ok := geminiImageModelsNamedWithoutImage[strings.ToLower(strings.TrimSpace(model))]
+	return ok
+}
+
+// IsGeminiImagesPassthroughModel 二开：OpenAI Images（gemini 分组）透传链路专用判据，
+// = IsGeminiImageGenerationModel ∪ geminiImageModelsNamedWithoutImage。
+// 刻意不改 IsGeminiImageGenerationModel 本身：它还驱动原生 /v1beta 的生图记录
+// （gemini_v1beta_handler.go）与原生在途预留估算（gateway_inflight_reservation_fork.go）。
+func IsGeminiImagesPassthroughModel(model string) bool {
+	return IsGeminiImageGenerationModel(model) || isGeminiImageModelNamedWithoutImage(model)
+}
+
 // ForwardGeminiImagesPassthrough 将 OpenAI Images 请求原样透传到 Gemini AI Studio
 // API Key 账号 base_url 指向的 OpenAI 兼容上游（如自建号池）。
 // 前提：上游支持 OpenAI Images 协议；真·Google AI Studio 原生接口不适用，
@@ -47,8 +66,10 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 		requestModel = mapped
 	}
 	upstreamModel := account.GetMappedModel(requestModel)
-	if !IsGeminiImageGenerationModel(upstreamModel) {
-		return nil, fmt.Errorf("gemini images passthrough requires a gemini image model, got %q", upstreamModel)
+	// 账号 model_mapping 是管理员显式配置，信任它；名字检查只看映射前的名字
+	// （上游别名如 "[A.s]nano-banana-pro" 不含 gemini-/image，按名字判必然误拒）。
+	if !IsGeminiImagesPassthroughModel(requestModel) {
+		return nil, fmt.Errorf("gemini images passthrough requires a gemini image model, got %q", requestModel)
 	}
 
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)

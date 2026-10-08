@@ -507,6 +507,9 @@ func validateOpenAIImagesModel(model string) error {
 // drives native Responses tool conversion, pricing and rate-limit policy.
 func isGeminiCompatibleImageModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
+	if isGeminiImageModelNamedWithoutImage(model) {
+		return true
+	}
 	return strings.HasPrefix(model, "gemini-") &&
 		(strings.HasSuffix(model, "-image") || strings.Contains(model, "-image-"))
 }

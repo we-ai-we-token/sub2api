@@ -110,7 +110,7 @@ func (h *OpenAIGatewayHandler) GeminiImages(c *gin.Context) {
 	// 分组模型映射（无映射时 MappedModel == 请求模型），随后严格校验映射结果
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestModel)
 	mappedModel := channelMapping.MappedModel
-	if !service.IsGeminiImageGenerationModel(mappedModel) {
+	if !service.IsGeminiImagesPassthroughModel(mappedModel) {
 		h.errorResponse(c, http.StatusNotFound, "invalid_request_error",
 			fmt.Sprintf("Model %q is not available for image generation on Gemini groups (mapped model %q is not a gemini image model)", requestModel, mappedModel))
 		return
