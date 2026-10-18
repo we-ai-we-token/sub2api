@@ -93,6 +93,8 @@ git remote add upstream <upstream-repository-url>
 - **上游前端用例在上游自己就是红的，别当成合并事故**：v0.2.3 新增的 `frontend/src/views/admin/__tests__/GroupsView.codexManifest.spec.ts` 既没 mock `@/stores/auth` 也没装 pinia，而 GroupsView 的 setup 顶层就调 `useAuthStore()`，`vitest run` 必炸。上游 CI 只跑 `Makefile` 里 `FRONTEND_CRITICAL_VITEST` 白名单，这个文件不在里面所以上游没暴露；我方验证清单跑全量 `test:run` 就会挂。**判定方法**：`git worktree add <tmp> <tag> && cd <tmp>/frontend && pnpm install && vitest run <该用例>`，在干净 tag 上跑一遍就知道是不是我们弄坏的。确认是上游问题后在本地补最小 mock，并单独提一个 commit。**v0.2.14 又来一次**：上游改了源码却没同步 `settings.authSourceDefaults.spec.ts`（PLATFORMS 加 typesafe，5→6 个平台）和 `UseKeyModal.spec.ts`（remote catalog 模式多一行 `api_key_model_discovery = true`），干净 tag 上同样 6 个红。
 - **上游改 `deploy/docker-compose*.yml` 的默认值，二开独有的 `deploy/production/` 不会跟着变**：这个目录上游不碰，合并永远不冲突。v0.2.14 上游为 #7850 把 `ADMIN_EMAIL` 默认值改成空（自动生成随机管理员邮箱），四个上游 compose 都改了，`deploy/production/docker-compose.yml` / `env.example` 却还写死 `admin@sub2api.local`，上游加固对我方真实部署路径完全不生效。**每次合并后**看一眼 `git diff <prev-tag> <new-tag> -- deploy/docker-compose.yml deploy/.env.example` 有没有改环境变量默认值，有就同步到 `deploy/production/`。
 - **`vi.mock` 对象字面量里的重复 key = 上游断言变死代码**：二开往 `vi.mock('@/api/admin')` 里加 inline stub 时，如果该 key 上游已有 `vi.hoisted()` spy 简写，两行会并存且**后者覆盖前者**，组件拿到的是 inline stub，hoisted spy 永远零调用。于是上游后来新增的 `expect(<spy>).not.toHaveBeenCalled()` 恒真、`mockReset()` / `mockResolvedValue()` 全是空转，eslint 和 typecheck 都不报（只有 vite 的 `Duplicate key` warning，淹在输出里）。v0.2.3 在 `GroupsView.columnSettings.spec.ts` / `GroupsView.duplicate.spec.ts` 上真的发生了。**往 mock 里加 key 之前先 grep 同名 key**；判断某条 `not.toHaveBeenCalled()` 是不是空转，把用例前置条件反过来跑一遍，断言该失败而不失败就是空转。
+- **调度快照投影 key 列表（`repository/scheduler_cache.go` 的 `buildSchedulerMetadataAccount` 里那条 `keys := []string{...}`）是两侧各自往里加键（v0.2.17）**：二开加了 `tier_id`（Gemini 本地配额预检要用，丢了所有 Gemini 账号被当 `aistudio_free`），上游 v0.2.17 为 Gemini 显式缓存候选过滤加了 `base_url` / `auth_mode` / `GeminiExplicitCacheUpstreamCredentialKey` / `GeminiExplicitCacheUpstreamMaxTTLCredentialKey`。冲突一律解成「两边的键都保留」。**连带坑**：二开回归测试 `scheduler_cache_tier_fork_unit_test.go` 原先拿 `base_url` 当「未投影」哨兵来证明过滤真在跑，上游把 `base_url` 纳入白名单后该断言失效（`Should be empty, but was http://x`）——哨兵换成一个确实不在白名单里的键即可，别退回「不投影 base_url」。
+- **本轮新增的几个 handler 合并触点（v0.2.17，供下次参考）**：`handler/gemini_v1beta_handler.go` 二开生图记录（`imageGenRecord`）与上游 Gemini 显式缓存绑定（`cachedContentBinding` / `cachedContentExclusions`，`fs` 用上游 `maxAccountSwitches`）在同两处交织，都要留；`handler/gateway_handler.go` 二开 `imageGenerationRecordService` 与上游 `geminiCachedContentService` 两个字段 + `wire.go` `ProvideGatewayHandler` 的两个 provider 形参都要留（后者经字段注入设置）；`handler/endpoint.go` 的 `PlatformGemini` 映射把上游 `EndpointGeminiCachedContents` 折进二开的 images 透传 `switch`；`service/openai_gateway_response_handling.go` 二开 synth usage 隐藏与上游 `ensureOpenAIResponseObjectCreatedAt` 两存。
 
 ### After the merge
 
@@ -113,7 +115,7 @@ GOPROXY=https://goproxy.cn,direct go build ./... && go vet ./... && go vet -tags
 gofmt -l ./cmd ./internal ./pkg                       # must print nothing; go vet does NOT catch merge-broken alignment
 go test -tags unit ./internal/...                     # -tags unit is REQUIRED, else //go:build unit cases silently skip
 TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration ./...   # CI equivalent: make test-integration
-GOFLAGS=-mod=mod go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.0 run --timeout=30m ./...  # same version as backend-ci.yml
+GOFLAGS=-mod=mod go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --timeout=30m ./...  # 跟 backend-ci.yml 走，版本随 go.mod 一起升
 
 # frontend
 cd frontend
@@ -123,6 +125,8 @@ npx pnpm@9 run lint:check && npx pnpm@9 typecheck && npx pnpm@9 test:run
 
 - Use **pnpm 9** (what CI uses). pnpm 11 no longer reads the `pnpm.overrides` field in `package.json`, so `--frozen-lockfile` fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, and it will rewrite `pnpm-lock.yaml` and drop a stray `pnpm-workspace.yaml` — never commit those.
 - vitest exits non-zero on Unhandled Errors even when every test passes; check the exit code, not just the summary line.
+- **golangci-lint 版本必须跟着 `backend/go.mod` 的 go 版本一起升**：v0.2.17 把 `go` 升到 `1.27.2`，上游 CI 的 golangci-lint 同步从 `v2.13` 升到 **`v2.14.0`**（见 `backend-ci.yml`，`golangci-lint-action@v9` 的 `version:`）。旧的 `@v2.13.0` 在 go1.27.2 下会对**所有** stdlib 导入报 `typecheck`：`export data version 5 is greater than maximum supported version 4`——这不是代码问题，是工具太旧读不了新 stdlib 的 v5 导出数据。每次合并后核对 `git show <new-tag>:.github/workflows/backend-ci.yml | grep -A1 golangci-lint-action` 的 `version:`，同步到本清单。
+- **go 1.27.2 toolchain 两个坑**：(1) 本机 go 若低于 1.27.2，`GOTOOLCHAIN=local` 会直接 `go.mod requires go >= 1.27.2` 报错；用默认 `GOTOOLCHAIN`（自动下 `golang.org/toolchain@...go1.27.2`）跑所有 go 命令。(2) 用 1.27.2 跑 `go mod tidy` 会把上游 `go.sum` 里冗余的旧版 `golang.org/x/*`（crypto 0.55/mod 0.38/net 0.58/sync 0.22…）整理掉——**别提交这个 tidy 结果**。上游 `go.sum` 自己就带这些冗余条目且 CI 通过，额外条目不影响 build；合并时 `git checkout <new-tag> -- backend/go.sum backend/go.mod` 取上游原样即可（二开没往 go.mod 加过外部依赖，上游 go.sum 必然是 superset）。
 - CI 跑的是 `make test-frontend` = `lint:check`（eslint）+ `typecheck` + 关键用例，**别漏了 `lint:check`**：typecheck 和 vitest 都不跑 eslint 规则。仓库没装 prettier，也没有 prettier 检查，不要用 `npx prettier --check` 判定前端格式（外部版本对存量文件本来就一片报警）。
 
 Keep `main` clean so it remains easy to compare with upstream.
