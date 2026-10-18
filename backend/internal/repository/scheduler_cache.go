@@ -958,7 +958,11 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	// the full account. Dropping it silently falls back to the platform threshold.
 	// tier_id：Gemini 本地配额预检（PreCheckUsageBatch）在候选列表阶段读它，
 	// 丢掉会让所有 Gemini 账号静默回落成 aistudio_free（二开，2026-10-08）。
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "tier_id"}
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "tier_id",
+		// Gemini 显式缓存的候选过滤（GeminiExplicitCacheExclusions）读本投影判定账号是否支持显式缓存：
+		// 官方地址、Vertex 认证方式与上游网关的显式缓存声明。缺这几个键时只能按类型粗筛，
+		// 不支持的账号要逐个选中后才被剔除。
+		"base_url", "auth_mode", service.GeminiExplicitCacheUpstreamCredentialKey, service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
