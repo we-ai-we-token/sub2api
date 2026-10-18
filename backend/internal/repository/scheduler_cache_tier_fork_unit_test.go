@@ -14,10 +14,11 @@ import (
 func TestSchedulerMetadataKeepsGeminiTierID(t *testing.T) {
 	acc := service.Account{
 		ID: 1, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k", "base_url": "http://x", "tier_id": "aistudio_paid"},
+		Credentials: map[string]any{"api_key": "k", "tier_id": "aistudio_paid", "unprojected_sentinel": "v"},
 	}
 	meta := buildSchedulerMetadataAccount(acc)
 	require.Equal(t, "aistudio_paid", meta.GeminiTierID())
-	// base_url 不在白名单里：确认这条测试真的走过过滤，而不是原样拷贝了凭据
-	require.Empty(t, meta.GetCredential("base_url"))
+	// 上游 v0.2.17 起 base_url 已进投影白名单（Gemini 显式缓存候选过滤要用），
+	// 这里改用一个未投影的哨兵键，确认这条测试真的走过过滤、而不是原样拷贝了凭据
+	require.Empty(t, meta.GetCredential("unprojected_sentinel"))
 }
