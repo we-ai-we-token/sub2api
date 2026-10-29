@@ -30,6 +30,9 @@ type imageGenerationRecordState struct {
 
 	lastAccount *service.Account
 	succeeded   bool
+	// clientDisconnected：转发返回了结果但客户端中途断开（上游 v0.2.18 起 Gemini 原生流
+	// 断开时按已收集用量计费并返回 nil error）。已计费，但不算一次完整的生图成功。
+	clientDisconnected bool
 
 	// 成功结果的摘要字段（由 noteSuccess* 从各链路的 result 提取，屏蔽结果类型差异）
 	upstreamModel     string
@@ -70,8 +73,8 @@ func (st *imageGenerationRecordState) noteSuccess(result *service.OpenAIForwardR
 	if st == nil {
 		return
 	}
-	st.succeeded = true
 	if result == nil {
+		st.succeeded = true
 		return
 	}
 	st.upstreamModel = result.UpstreamModel
@@ -84,6 +87,7 @@ func (st *imageGenerationRecordState) noteSuccess(result *service.OpenAIForwardR
 	if st.upstreamRequestID == "" {
 		st.upstreamRequestID = result.RequestID
 	}
+	st.noteOutcome(result.ClientDisconnect)
 }
 
 // noteSuccessNative 在 Gemini 原生 generateContent 链路最终成功时调用。
@@ -91,14 +95,25 @@ func (st *imageGenerationRecordState) noteSuccessNative(result *service.ForwardR
 	if st == nil {
 		return
 	}
-	st.succeeded = true
 	if result == nil {
+		st.succeeded = true
 		return
 	}
 	st.upstreamModel = result.UpstreamModel
 	st.imageCount = result.ImageCount
 	st.imageSize = result.ImageSize
 	st.upstreamRequestID = result.RequestID
+	st.noteOutcome(result.ClientDisconnect)
+}
+
+// noteOutcome 保留已提取的摘要字段（计费照常），客户端中途断开的记为失败：
+// 运营报表的分段耗时只取 success 行，被截断的 response_ms 会把分位数拉低。
+func (st *imageGenerationRecordState) noteOutcome(clientDisconnect bool) {
+	if clientDisconnect {
+		st.clientDisconnected = true
+		return
+	}
+	st.succeeded = true
 }
 
 // finishImageGenerationRecord 组装并异步落一行生图记录。
@@ -242,8 +257,13 @@ func buildImageGenerationRecordInput(c *gin.Context, st *imageGenerationRecordSt
 	}
 
 	if !st.succeeded {
-		hasUpstreamContext := input.UpstreamStatusCode != nil || len(input.AttemptsDetail) > 0
-		input.ErrorType = classifyImageGenerationErrorType(c, input.StatusCode, hasUpstreamContext)
+		if st.clientDisconnected {
+			// 200 已经写出，按线上状态码分类会落到 gateway_error。
+			input.ErrorType = "client_canceled"
+		} else {
+			hasUpstreamContext := input.UpstreamStatusCode != nil || len(input.AttemptsDetail) > 0
+			input.ErrorType = classifyImageGenerationErrorType(c, input.StatusCode, hasUpstreamContext)
+		}
 	}
 	return input
 }
