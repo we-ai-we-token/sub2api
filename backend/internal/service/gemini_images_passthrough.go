@@ -168,10 +168,7 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 	if err != nil {
 		return nil, err
 	}
-	finalCount := parsed.N
-	if imageCount > 0 {
-		finalCount = imageCount
-	}
+	finalCount := resolveBillableImageCount(imageCount, parsed.N, imageCountBillingEnabled(getAPIKeyFromContext(c)))
 	return &OpenAIForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
 		UpstreamHeaders:  resp.Header,
@@ -180,6 +177,7 @@ func (s *OpenAIGatewayService) ForwardGeminiImagesPassthrough(
 		UpstreamModel:    upstreamModel,
 		ResponseHeaders:  resp.Header.Clone(),
 		Duration:         time.Since(startTime),
+		ImageEndpoint:    true,
 		ImageCount:       finalCount,
 		ImageSize:        parsed.SizeTier,
 		ImageInputSize:   parsed.Size,

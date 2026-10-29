@@ -1883,6 +1883,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		ResponseHeaders:  output.ResponseHeaders,
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     output.FirstTokenMs,
+		ImageEndpoint:    true,
 		ImageCount:       len(output.ImageResults),
 		ImageSize:        parsed.SizeTier,
 		ImageInputSize:   parsed.Size,
@@ -1907,13 +1908,18 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthOnce(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
+	uploadParts := make([]string, 0, len(parsed.Uploads))
+	for _, upload := range parsed.Uploads {
+		uploadParts = append(uploadParts, fmt.Sprintf("%s:%d", upload.ContentType, len(upload.Data)))
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d upload_parts=%v",
 		requestModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
+		uploadParts,
 	)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
@@ -2060,13 +2066,18 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
+	uploadParts := make([]string, 0, len(parsed.Uploads))
+	for _, upload := range parsed.Uploads {
+		uploadParts = append(uploadParts, fmt.Sprintf("%s:%d", upload.ContentType, len(upload.Data)))
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d upload_parts=%v",
 		requestModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
+		uploadParts,
 	)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
@@ -2194,6 +2205,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 						ResponseHeaders:  resp.Header.Clone(),
 						Duration:         time.Since(startTime),
 						FirstTokenMs:     firstTokenMs,
+						ImageEndpoint:    true,
 						ImageCount:       imageCount,
 						ImageSize:        parsed.SizeTier,
 						ImageInputSize:   parsed.Size,
@@ -2229,6 +2241,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 			ResponseHeaders:  resp.Header.Clone(),
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     firstTokenMs,
+			ImageEndpoint:    true,
 			ImageCount:       imageCount,
 			ImageSize:        parsed.SizeTier,
 			ImageInputSize:   parsed.Size,
