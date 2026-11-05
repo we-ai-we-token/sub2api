@@ -93,6 +93,8 @@ type OpenAIImagesRequest struct {
 	Style              string
 	OutputCompression  *int
 	PartialImages      *int
+	FrameCount         *int
+	FrameDurationMs    *int
 	HasMask            bool
 	HasNativeOptions   bool
 	RequiredCapability OpenAIImagesCapability
@@ -294,6 +296,20 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		v := int(partialImages.Int())
 		req.PartialImages = &v
 	}
+	if frameCount := gjson.GetBytes(body, "frame_count"); frameCount.Exists() {
+		if frameCount.Type != gjson.Number {
+			return fmt.Errorf("invalid frame_count field type")
+		}
+		v := int(frameCount.Int())
+		req.FrameCount = &v
+	}
+	if frameDurationMs := gjson.GetBytes(body, "frame_duration_ms"); frameDurationMs.Exists() {
+		if frameDurationMs.Type != gjson.Number {
+			return fmt.Errorf("invalid frame_duration_ms field type")
+		}
+		v := int(frameDurationMs.Int())
+		req.FrameDurationMs = &v
+	}
 	if req.IsEdits() {
 		images := gjson.GetBytes(body, "images")
 		if images.Exists() {
@@ -449,6 +465,20 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 			}
 			req.PartialImages = &n
 			req.HasNativeOptions = true
+		case "frame_count":
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("invalid frame_count field value")
+			}
+			req.FrameCount = &n
+			req.HasNativeOptions = true
+		case "frame_duration_ms":
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("invalid frame_duration_ms field value")
+			}
+			req.FrameDurationMs = &n
+			req.HasNativeOptions = true
 		default:
 			if isOpenAINativeImageOption(name) && value != "" {
 				req.HasNativeOptions = true
@@ -583,6 +613,8 @@ func hasOpenAINativeImageOptions(exists func(path string) bool) bool {
 		"moderation",
 		"input_fidelity",
 		"partial_images",
+		"frame_count",
+		"frame_duration_ms",
 	} {
 		if exists(path) {
 			return true
@@ -593,7 +625,7 @@ func hasOpenAINativeImageOptions(exists func(path string) bool) bool {
 
 func isOpenAINativeImageOption(name string) bool {
 	switch strings.TrimSpace(strings.ToLower(name)) {
-	case "background", "quality", "style", "output_format", "output_compression", "moderation", "input_fidelity", "partial_images":
+	case "background", "quality", "style", "output_format", "output_compression", "moderation", "input_fidelity", "partial_images", "frame_count", "frame_duration_ms":
 		return true
 	default:
 		return false
