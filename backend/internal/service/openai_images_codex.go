@@ -39,6 +39,7 @@ func buildOpenAIImagesCodexGenerationsBody(parsed *OpenAIImagesRequest, model st
 	for _, f := range []struct{ path, value string }{
 		{"size", parsed.Size},
 		{"quality", parsed.Quality},
+		{"complexity", parsed.Complexity},
 		{"output_format", parsed.OutputFormat},
 		{"background", parsed.Background},
 	} {
@@ -51,6 +52,10 @@ func buildOpenAIImagesCodexGenerationsBody(parsed *OpenAIImagesRequest, model st
 	}
 	if parsed.FrameDurationMS != nil {
 		body, _ = sjson.SetBytes(body, "frame_duration_ms", *parsed.FrameDurationMS)
+	}
+	// GPT Image 2.6 的 SVG 作者选项与上游 direct 链路（buildOpenAIImagesOAuthPayload）同口径透传。
+	if parsed.SVG != nil {
+		body, _ = sjson.SetBytes(body, "svg", parsed.SVG)
 	}
 	return body
 }
@@ -89,6 +94,18 @@ func buildOpenAIImagesCodexEditsBody(parsed *OpenAIImagesRequest, model string) 
 			return nil, "", fmt.Errorf("set mask field: %w", err)
 		}
 	}
+
+	// GPT Image 2.6 markup 参考图：与 mask 同样内联成 data URL（与上游 direct 链路同口径）。
+	markupURL, ok, err := openAIImagesCodexEditInlineImageURL(parsed.MarkupUpload, parsed.MarkupImageURL)
+	if err != nil {
+		return nil, "", err
+	}
+	if ok {
+		body, err = sjson.SetBytes(body, "markup", map[string]string{"image_url": markupURL})
+		if err != nil {
+			return nil, "", fmt.Errorf("set markup field: %w", err)
+		}
+	}
 	return body, "application/json", nil
 }
 
@@ -114,10 +131,16 @@ func openAIImagesCodexEditImageURLs(parsed *OpenAIImagesRequest) ([]string, erro
 }
 
 func openAIImagesCodexEditMaskURL(parsed *OpenAIImagesRequest) (string, bool, error) {
-	if parsed.MaskUpload != nil && len(parsed.MaskUpload.Data) > 0 {
-		return openAIImagesBytesDataURL(parsed.MaskUpload.Data, parsed.MaskUpload.ContentType), true, nil
+	return openAIImagesCodexEditInlineImageURL(parsed.MaskUpload, parsed.MaskImageURL)
+}
+
+// openAIImagesCodexEditInlineImageURL turns an uploaded part or a data: URL
+// (mask / markup) into the inline data URL the codex edits endpoint expects.
+func openAIImagesCodexEditInlineImageURL(upload *OpenAIImagesUpload, imageURL string) (string, bool, error) {
+	if upload != nil && len(upload.Data) > 0 {
+		return openAIImagesBytesDataURL(upload.Data, upload.ContentType), true, nil
 	}
-	if raw := strings.TrimSpace(parsed.MaskImageURL); raw != "" {
+	if raw := strings.TrimSpace(imageURL); raw != "" {
 		dataURL, err := normalizeOpenAIImagesEditDataURL(raw)
 		if err != nil {
 			return "", false, err
