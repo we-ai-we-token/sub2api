@@ -3,7 +3,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -47,4 +51,34 @@ func (r openAIImagesFailoverAccountRepo) accountsForPlatform(platform string) []
 		}
 	}
 	return out
+}
+
+// openAIImagesFailoverHTTPUpstream 同样原样取自上游 openai_images_failover_test.go：
+// v0.2.20 上游新增的 openai_images_size_routing_test.go 复用了它。
+type openAIImagesFailoverHTTPUpstream struct {
+	service.HTTPUpstream
+	mu         sync.Mutex
+	accountIDs []int64
+}
+
+func (u *openAIImagesFailoverHTTPUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.mu.Unlock()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"X-Request-Id": []string{"req_img_failover"},
+		},
+		Body: io.NopCloser(bytes.NewBufferString(
+			"data: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"code\":\"server_error\",\"message\":\"image backend unavailable\"}}\n\n",
+		)),
+	}, nil
+}
+
+func (u *openAIImagesFailoverHTTPUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
 }

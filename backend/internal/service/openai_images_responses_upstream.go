@@ -42,6 +42,9 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	if parsed.MarkupImageURL != "" || parsed.MarkupUpload != nil || parsed.SVG != nil || parsed.FrameCount != nil || parsed.FrameDurationMS != nil {
+		return nil, fmt.Errorf("markup, SVG author options and GIF frame controls require the native Images endpoint")
+	}
 	prompt := strings.TrimSpace(parsed.Prompt)
 	if prompt == "" {
 		return nil, fmt.Errorf("prompt is required")
@@ -94,6 +97,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	}{
 		{path: "size", value: parsed.Size},
 		{path: "quality", value: parsed.Quality},
+		{path: "complexity", value: parsed.Complexity},
 		{path: "background", value: parsed.Background},
 		{path: "output_format", value: parsed.OutputFormat},
 		{path: "moderation", value: parsed.Moderation},
@@ -108,12 +112,6 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	}
 	if parsed.PartialImages != nil {
 		tool, _ = sjson.SetBytes(tool, "partial_images", *parsed.PartialImages)
-	}
-	if parsed.FrameCount != nil {
-		tool, _ = sjson.SetBytes(tool, "frame_count", *parsed.FrameCount)
-	}
-	if parsed.FrameDurationMs != nil {
-		tool, _ = sjson.SetBytes(tool, "frame_duration_ms", *parsed.FrameDurationMs)
 	}
 
 	maskImageURL := strings.TrimSpace(parsed.MaskImageURL)
@@ -398,7 +396,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 		len(parsed.Uploads),
 		uploadParts,
 	)
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx, s.openAIImageDrainTimeout())
 	defer releaseUpstreamCtx()
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)
@@ -473,7 +471,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
-		if direct && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
+		if direct && !requiresCodexDirectImages(upstreamModel) && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
 			return s.forwardOpenAIImagesOAuth(withOpenAIImagesForceResponses(ctx), c, account, parsed, channelMappedModel)
 		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {

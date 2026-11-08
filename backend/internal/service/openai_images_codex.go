@@ -49,8 +49,8 @@ func buildOpenAIImagesCodexGenerationsBody(parsed *OpenAIImagesRequest, model st
 	if parsed.FrameCount != nil {
 		body, _ = sjson.SetBytes(body, "frame_count", *parsed.FrameCount)
 	}
-	if parsed.FrameDurationMs != nil {
-		body, _ = sjson.SetBytes(body, "frame_duration_ms", *parsed.FrameDurationMs)
+	if parsed.FrameDurationMS != nil {
+		body, _ = sjson.SetBytes(body, "frame_duration_ms", *parsed.FrameDurationMS)
 	}
 	return body
 }

@@ -22,9 +22,9 @@ func parseOpenAIImagesGIFTestJSON(t *testing.T, body string) *OpenAIImagesReques
 func TestOpenAIImagesGIFFrameParams_ForwardedOnAllOAuthPaths(t *testing.T) {
 	parsed := parseOpenAIImagesGIFTestJSON(t, `{"model":"gpt-image-2.6-sunburst","prompt":"a cat waving","output_format":"gif","frame_count":6,"frame_duration_ms":150}`)
 	require.NotNil(t, parsed.FrameCount)
-	require.NotNil(t, parsed.FrameDurationMs)
+	require.NotNil(t, parsed.FrameDurationMS)
 	require.Equal(t, 6, *parsed.FrameCount)
-	require.Equal(t, 150, *parsed.FrameDurationMs)
+	require.Equal(t, 150, *parsed.FrameDurationMS)
 	require.True(t, parsed.HasNativeOptions)
 
 	codexBody, _, err := buildOpenAIImagesCodexRequestBody(parsed, "gpt-image-2.6-sunburst")
@@ -46,7 +46,7 @@ func TestOpenAIImagesGIFFrameParams_ForwardedOnAllOAuthPaths(t *testing.T) {
 func TestOpenAIImagesGIFFrameParams_OmittedWhenAbsent(t *testing.T) {
 	parsed := parseOpenAIImagesGIFTestJSON(t, `{"model":"gpt-image-2.6-sunburst","prompt":"a cat"}`)
 	require.Nil(t, parsed.FrameCount)
-	require.Nil(t, parsed.FrameDurationMs)
+	require.Nil(t, parsed.FrameDurationMS)
 
 	codexBody, _, err := buildOpenAIImagesCodexRequestBody(parsed, "gpt-image-2.6-sunburst")
 	require.NoError(t, err)
@@ -84,8 +84,8 @@ func TestOpenAIImagesGIFFrameParams_Multipart(t *testing.T) {
 	parsed, err := newOpenAIImagesTestService(nil).ParseOpenAIImagesRequest(c, body.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, parsed.FrameCount)
-	require.NotNil(t, parsed.FrameDurationMs)
+	require.NotNil(t, parsed.FrameDurationMS)
 	require.Equal(t, 4, *parsed.FrameCount)
-	require.Equal(t, 80, *parsed.FrameDurationMs)
+	require.Equal(t, 80, *parsed.FrameDurationMS)
 	require.True(t, parsed.HasNativeOptions)
 }
