@@ -17,8 +17,10 @@ func parseOpenAIImagesGIFTestJSON(t *testing.T, body string) *OpenAIImagesReques
 	return parsed
 }
 
-// 三条 OAuth 生图出站链路都要带上 GIF 帧参数；漏任何一条，走该链路的分组就会被上游拒成
-// 「GIF output is not enabled」。codex images 端点由 Group.ImageUseResponsesAPI=false 选中。
+// GIF 帧参数在 OAuth 生图出站链路上的口径（v0.2.20 起解析与 direct 链路改用上游实现）：
+//   - 二开 codex images 端点（Group.ImageUseResponsesAPI=false 选中）与上游 direct 端点：顶层透传；
+//   - Responses image_generation 工具：上游口径是直接报错「require the native Images endpoint」，
+//     不再像二开早先那样塞进 tool 里（Codex 后端把工具模型钉死在 gpt-image-2-codex，塞了也是 400）。
 func TestOpenAIImagesGIFFrameParams_ForwardedOnAllOAuthPaths(t *testing.T) {
 	parsed := parseOpenAIImagesGIFTestJSON(t, `{"model":"gpt-image-2.6-sunburst","prompt":"a cat waving","output_format":"gif","frame_count":6,"frame_duration_ms":150}`)
 	require.NotNil(t, parsed.FrameCount)
@@ -37,10 +39,14 @@ func TestOpenAIImagesGIFFrameParams_ForwardedOnAllOAuthPaths(t *testing.T) {
 	require.Equal(t, int64(6), gjson.GetBytes(directBody, "frame_count").Int())
 	require.Equal(t, int64(150), gjson.GetBytes(directBody, "frame_duration_ms").Int())
 
-	responsesBody, _, err := buildOpenAIImagesOAuthPayload(parsed, "gpt-image-2.6-sunburst")
+	// 2.6 必须走原生端点（上游 requiresCodexDirectImages），帧参数同样顶层透传。
+	direct26Body, _, err := buildOpenAIImagesOAuthPayload(parsed, "gpt-image-2.6-sunburst")
 	require.NoError(t, err)
-	require.Equal(t, int64(6), gjson.GetBytes(responsesBody, "tools.0.frame_count").Int())
-	require.Equal(t, int64(150), gjson.GetBytes(responsesBody, "tools.0.frame_duration_ms").Int())
+	require.Equal(t, int64(6), gjson.GetBytes(direct26Body, "frame_count").Int())
+	require.Equal(t, int64(150), gjson.GetBytes(direct26Body, "frame_duration_ms").Int())
+
+	_, err = buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	require.ErrorContains(t, err, "native Images endpoint", "帧参数不能在 Responses 回退链路上被静默吞掉")
 }
 
 func TestOpenAIImagesGIFFrameParams_OmittedWhenAbsent(t *testing.T) {
@@ -52,7 +58,7 @@ func TestOpenAIImagesGIFFrameParams_OmittedWhenAbsent(t *testing.T) {
 	require.NoError(t, err)
 	directBody, _, err := buildOpenAIImagesOAuthPayload(parsed, "gpt-image-2.5-flare")
 	require.NoError(t, err)
-	responsesBody, _, err := buildOpenAIImagesOAuthPayload(parsed, "gpt-image-2.6-sunburst")
+	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
 	require.NoError(t, err)
 	for _, path := range []string{"frame_count", "frame_duration_ms"} {
 		require.False(t, gjson.GetBytes(codexBody, path).Exists(), "codex %s", path)
