@@ -50,6 +50,8 @@ func TestGPTImage26ComplexityAcrossImageEndpoints(t *testing.T) {
 							body, contentType = buf.Bytes(), writer.FormDataContentType()
 						}
 						c, _ := newOpenAIImagesTestContext(t, body)
+						// 二开按 Group.ImageUseResponsesAPI 分流 OAuth 生图，裸 context 会落到二开 codex images 端点链路。
+						c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 						c.Request.Header.Set("Content-Type", contentType)
 						endpoint := "/backend-api/codex/images/generations"
 						if format != "generation" {
@@ -92,6 +94,8 @@ func TestGPTImage26DoesNotFallbackToResponses(t *testing.T) {
 				}}
 				body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw","complexity":"low"}`, model))
 				c, rec := newOpenAIImagesTestContext(t, body)
+				// 二开按 Group.ImageUseResponsesAPI 分流 OAuth 生图，裸 context 会落到二开 codex images 端点链路。
+				c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 				svc := newOpenAIImagesTestService(upstream)
 				parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 				require.NoError(t, err)
@@ -140,6 +144,8 @@ func TestGPTImage26OutputFormats(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{"model":"gpt-image-2.6-flare","prompt":"draw","output_format":%q,"response_format":"url"}`, format))
 			c, rec := newOpenAIImagesTestContext(t, body)
+			// 二开按 Group.ImageUseResponsesAPI 分流 OAuth 生图，裸 context 会落到二开 codex images 端点链路。
+			c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 			response := fmt.Sprintf(`{"output_format":%q,"data":[{"b64_json":"AA=="}],"usage":{"input_tokens":10,"output_tokens":20}}`, format)
 			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(response))}}
 			svc := newOpenAIImagesTestService(upstream)
@@ -232,6 +238,8 @@ func TestGPTImage26StreamedJSONEdits(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/disconnect=%t", model, disconnect), func(t *testing.T) {
 				body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"edit","images":[{"image_url":"data:image/png;base64,AA=="}],"n":2,"stream":true,"response_format":"url"}`, model))
 				c, rec := newOpenAIImagesTestContext(t, body)
+				// 二开按 Group.ImageUseResponsesAPI 分流 OAuth 生图，裸 context 会落到二开 codex images 端点链路。
+				c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 				c.Request.URL.Path = openAIImagesEditsEndpoint
 				if disconnect {
 					c.Writer = &failingOpenAIImageWriter{ResponseWriter: c.Writer, failAfter: 1}
@@ -260,6 +268,8 @@ func TestGPTImage26StreamedJSONEdits(t *testing.T) {
 		t.Run(response, func(t *testing.T) {
 			body := []byte(`{"model":"gpt-image-2.6-flare","prompt":"draw","stream":true}`)
 			c, rec := newOpenAIImagesTestContext(t, body)
+			// 二开按 Group.ImageUseResponsesAPI 分流 OAuth 生图，裸 context 会落到二开 codex images 端点链路。
+			c.Set("api_key", &APIKey{Group: &Group{ImageUseResponsesAPI: true}})
 			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}}
 			svc := newOpenAIImagesTestService(upstream)
 			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
