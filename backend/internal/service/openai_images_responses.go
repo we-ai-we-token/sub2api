@@ -1478,8 +1478,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	var processDataErr error
 	processDataDone := false
 	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+	// 与上游 7f2876def 同口径：Codex images 端点（尤其 edits）在 stream=true 时可能直接回一整块
+	// JSON（没有任何 SSE data 行）。先把非 data 行有界地攒起来，流结束时若始终没见到 data 行，
+	// 就按 JSON 响应解析并补发 completed 事件——否则这张已付费的图会被当成空输出丢弃再换号重画。
+	var jsonFallbackBody bytes.Buffer
+	jsonFallbackLimit := resolveUpstreamResponseReadLimit(s.cfg)
+	jsonFallbackTooLarge := false
+	seenSSEData := false
 
 	processData := func(dataBytes []byte) {
+		seenSSEData = true
+		jsonFallbackBody.Reset()
 		if processDataDone || processDataErr != nil {
 			return
 		}
@@ -1642,7 +1651,19 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		if len(line) == 0 {
 			return false, nil
 		}
-		sseData.AddLine(string(line), processData)
+		lineStr := string(line)
+		if !seenSSEData && !jsonFallbackTooLarge {
+			trimmed := strings.TrimRight(lineStr, "\r\n")
+			if _, isData := extractOpenAISSEDataLine(trimmed); !isData && strings.TrimSpace(trimmed) != "" && !strings.HasPrefix(trimmed, ":") {
+				if int64(jsonFallbackBody.Len()+len(line)) <= jsonFallbackLimit {
+					_, _ = jsonFallbackBody.Write(line)
+				} else {
+					jsonFallbackTooLarge = true
+					jsonFallbackBody.Reset()
+				}
+			}
+		}
+		sseData.AddLine(lineStr, processData)
 		if processDataErr != nil {
 			return true, processDataErr
 		}
@@ -1655,6 +1676,70 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			return true, processDataErr
 		}
 		return processDataDone, nil
+	}
+
+	// finalizeJSONFallback 处理「stream=true 却回整块 JSON」：有图就补发 completed 事件并按成功计数；
+	// 带 error 对象就按上游错误返回；既无图也无错误（或根本不是 JSON）时不接管，
+	// 沿用二开的空输出重试语义（返回 handled=false）。
+	finalizeJSONFallback := func() (bool, error) {
+		if seenSSEData || jsonFallbackBody.Len() == 0 {
+			return false, nil
+		}
+		body := bytes.TrimSpace(jsonFallbackBody.Bytes())
+		if len(body) == 0 || !gjson.ValidBytes(body) {
+			return false, nil
+		}
+		upstreamErr := openAIImagesUpstreamErrorFromSSEPayload(body)
+		if upstreamErr == nil {
+			upstreamErr = openAIImagesUpstreamErrorFromGJSON(gjson.GetBytes(body, "error"), "")
+		}
+		if upstreamErr != nil {
+			retryable := IsRetryableOpenAIImagesUpstreamError(upstreamErr)
+			if !clientDisconnected && (!retryable || c.Writer.Size() != writerSizeBeforeResponse) {
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBodyFromUpstream(upstreamErr))
+			}
+			setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
+			return true, upstreamErr
+		}
+		results, err := parseCodexDirectImagesResponse(body)
+		if err != nil {
+			return false, nil
+		}
+		if firstTokenMs == nil {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
+		if bodyCreatedAt := gjson.GetBytes(body, "created").Int(); bodyCreatedAt > 0 {
+			createdAt = bodyCreatedAt
+		}
+		// 与上游 direct 链路同口径：Images API 的 usage 缺图片输出明细时 output_tokens 全算图片 token。
+		usageResult := gjson.GetBytes(body, "usage")
+		if parsedUsage, ok := codexDirectImagesUsage(body); ok {
+			usage = parsedUsage
+		}
+		finalResults := make([]openAIResponsesImageResult, 0, len(results))
+		finalSeen := make(map[string]struct{}, len(results))
+		for _, img := range results {
+			mergeOpenAIResponsesImageMeta(&img, streamMeta)
+			key := openAIResponsesImageResultKey("", img)
+			if _, exists := emitted[key]; exists {
+				continue
+			}
+			appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
+		}
+		eventName := streamPrefix + ".completed"
+		for i, img := range finalResults {
+			var eventUsage []byte
+			if i == len(finalResults)-1 && usageResult.IsObject() {
+				eventUsage = []byte(usageResult.Raw)
+			}
+			payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, eventUsage)
+			emitted[openAIResponsesImageResultKey("", img)] = struct{}{}
+			s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+		}
+		imageCount = len(emitted)
+		imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
+		return true, nil
 	}
 
 	finalizePending := func() error {
@@ -1680,6 +1765,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			imageCount = len(emitted)
 			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
 			return nil
+		}
+		if handled, err := finalizeJSONFallback(); handled {
+			return err
 		}
 
 		return errOpenAIImagesEmptyOutputRetryable
