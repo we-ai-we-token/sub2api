@@ -14,9 +14,14 @@ import (
 // 因此白名单只收两类：
 //
 //  1. net/http: TLS handshake timeout —— 到上游的 TLS 都没建成，请求一个字节都没发出去。
-//  2. write 方向的连接中断（connection reset by peer / broken pipe）—— 请求体正在
-//     上传途中被掐断，上游拿到的是不完整的请求，不会出图。实测这类错误的对端
-//     地址是代理 IP（core -> 代理 这一跳），与上游无关。
+//  2. write 方向的连接中断（connection reset by peer / broken pipe /
+//     connection timed out）—— 请求体正在上传途中被掐断，上游拿到的是不完整的请求，
+//     不会出图。实测这类错误的对端地址是代理 IP（core -> 代理 这一跳），与上游无关。
+//     connection timed out（ETIMEDOUT）是上游 v0.2.23（5854a1db4）给出站 socket 设了
+//     TCP_USER_TIMEOUT=30s 之后才常见的：已发送的数据 30s 没被确认，内核直接中止连接。
+//     以前同样的停滞要等十几分钟的 tcp_retries2，基本见不到这个 errno。write 调用失败
+//     说明请求体还没交完，与 reset / broken pipe 同理；read 方向的 connection timed out
+//     （请求已发完、等响应时被 keepalive 判死）仍然不重试。
 //
 // 明确排除（这些都可能意味着上游已经出图）：
 //   - unexpected EOF：请求已发完、响应阶段断的
@@ -49,7 +54,8 @@ func IsRetryableOpenAIImagesTransportError(err error) bool {
 
 	if strings.Contains(msg, "write tcp ") || strings.Contains(msg, ": write:") {
 		return strings.Contains(msg, "connection reset by peer") ||
-			strings.Contains(msg, "broken pipe")
+			strings.Contains(msg, "broken pipe") ||
+			strings.Contains(msg, "connection timed out")
 	}
 
 	return false

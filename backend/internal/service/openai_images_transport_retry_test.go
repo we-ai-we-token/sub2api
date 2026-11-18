@@ -15,6 +15,8 @@ func TestIsRetryableOpenAIImagesTransportError(t *testing.T) {
 		`upstream request failed: Post "https://x.openai.azure.com/openai/v1/images/edits": net/http: TLS handshake timeout`,
 		`Post "https://x.openai.azure.com/openai/v1/images/edits": write tcp 172.18.0.4:43846->23.139.220.177:35933: write: connection reset by peer`,
 		`upstream request failed: Post "https://x/openai/v1/images/edits": write tcp 172.18.0.4:1->2.2.2.2:3: write: broken pipe`,
+		// v0.2.23 起出站 socket 带 TCP_USER_TIMEOUT=30s：上传途中数据 30s 未被确认即 ETIMEDOUT
+		`Post "https://x/openai/v1/images/edits": write tcp 172.18.0.4:1->2.2.2.2:3: write: connection timed out`,
 	}
 	for _, m := range retryable {
 		require.True(t, IsRetryableOpenAIImagesTransportError(errors.New(m)), "应可重试: %s", m)
@@ -24,6 +26,8 @@ func TestIsRetryableOpenAIImagesTransportError(t *testing.T) {
 		// 请求已发出，上游可能已出图并计费
 		`upstream request failed: Post "https://x/openai/v1/images/edits": unexpected EOF`,
 		`Post "https://x/openai/v1/images/edits": read tcp 172.18.0.4:56134->23.139.220.3:36263: read: connection reset by peer`,
+		// 请求已发完、静默等图时被 30s keepalive 判死：上游可能照样出图，不重试
+		`Post "https://x/openai/v1/images/edits": read tcp 172.18.0.4:56134->23.139.220.3:36263: read: connection timed out`,
 		// 阶段不可分辨
 		`Post "https://x/openai/v1/images/edits": context deadline exceeded`,
 		`Post "https://x/openai/v1/images/edits": dial tcp 1.1.1.1:443: i/o timeout`,
