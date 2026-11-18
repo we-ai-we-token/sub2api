@@ -25,7 +25,9 @@ describe("groupsOpenAIFast", () => {
     for (const locale of [zh, en]) {
       expect(locale.groups.openaiFast).toMatchObject({
         forceUltrafast: expect.stringContaining("ultrafast"),
-        ultrafastHint: expect.stringContaining("service_tier=ultrafast"),
+        // 上游 6107cf174 重写了这段文案（按 Pro 套餐说明 GPT-6.2 档位），不再含
+        // "service_tier=ultrafast"，但没同步本断言；干净的 v0.2.23 上同样是红的。
+        ultrafastHint: expect.stringContaining("Ultra Fast"),
       });
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6 Astra");
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6.1 Sol");
