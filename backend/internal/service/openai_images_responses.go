@@ -846,7 +846,7 @@ func openAIImagesErrorTypeForStatus(status int) string {
 // generic 502.
 func openAIImagesUpstreamErrorFromHTTP(statusCode int, header http.Header, body []byte) *OpenAIImagesUpstreamError {
 	errType := strings.TrimSpace(gjson.GetBytes(body, "error.type").String())
-	code := strings.TrimSpace(extractUpstreamErrorCode(body))
+	code := openAIImagesUpstreamErrorCode(body) // 二开：扁平错误体的顶层 code 也透传，见 openai_images_error_code_fork.go
 	param := strings.TrimSpace(gjson.GetBytes(body, "error.param").String())
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	if message == "" {
@@ -2293,6 +2293,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthStreaming(
 					return nil, upErr
 				}
 			}
+			// 通用错误出口用共享抽取器取 code，不认扁平体的顶层 code；先提升成 error.code，
+			// 客户端才拿得到 unsupported_parameter 这类码（见 openai_images_error_code_fork.go）。
+			resp.Body = io.NopCloser(bytes.NewReader(openAIImagesPromoteFlatErrorCode(respBody)))
 			return s.handleErrorResponse(upstreamCtx, resp, c, account, reqBody)
 		}
 		defer func() { _ = resp.Body.Close() }()

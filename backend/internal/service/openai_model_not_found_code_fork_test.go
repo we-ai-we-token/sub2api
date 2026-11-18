@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 二开给 extractUpstreamErrorCode 加了顶层 code 兜底；中转常把 HTTP 状态码镜像进顶层 code，
-// 模型不存在判定若按它一票否决，v0.2.8 新增的「401 模型不存在走模型级冷却」会落空。
+// 中转常把 HTTP 状态码镜像进顶层 code；模型不存在判定若按它一票否决，v0.2.8 新增的
+// 「401 模型不存在走模型级冷却」会落空。v0.2.23 起共享抽取器本身已不认顶层 code（与上游一致），
+// 二开只额外采信顶层 code == model_not_found（第 4 条用例）。
 func TestIsOpenAICompatibleModelNotFoundBodyIgnoresMirroredTopLevelCode(t *testing.T) {
 	for _, tc := range []struct {
 		body string

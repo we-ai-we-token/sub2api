@@ -6,40 +6,26 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// 二开：extractUpstreamErrorCode 带了顶层 code 兜底（生图 unsupported_parameter 等判定依赖它），
-// 但「模型不存在」判定不能按它一票否决——中转常把 HTTP 状态码镜像进顶层 code
-// （{"code":401,"message":"unknown model x"}），否决后消息短语不再参与，v0.2.8 新增的
-// 401 模型不存在保护（ratelimit_service.go 的 upstream_401_model_not_found）落空，
-// API Key 账号被当成凭证失效直接停用。
+// 二开：「模型不存在」判定额外采信顶层 code == model_not_found。
 //
-// 这里恢复上游口径：只有结构化的嵌套 code（error.code / error.message 内嵌 JSON）有否决权；
-// 顶层 code 只在恰好是 model_not_found 时采信，否则交给消息短语判定。
-
+// 中转常回扁平错误体。顶层 code 可能是镜像进来的 HTTP 状态码
+// （{"code":401,"message":"unknown model x"}），也可能就是语义码
+// （{"code":"model_not_found","message":"No such deployment"}）。
+//
+// 上游 v0.2.23 起 extractUpstreamErrorCode 明确不认顶层 code（03a489e43，二开原先加在里面的
+// 顶层兜底已随之撤掉，见 openai_images_error_code_fork.go），所以镜像状态码不再有否决权，
+// 消息短语照常参与判定——这部分已与上游一致。二开只多留一条：顶层 code 恰好是
+// model_not_found 时直接采信，不要求消息里再带「unknown model」之类的短语；否则这类中转的
+// 401 会绕过 ratelimit_service.go 的 upstream_401_model_not_found 保护，API Key 账号被当成
+// 凭证失效直接停用。
+//
 // openAICompatibleModelNotFoundByCode 返回 decided=false 表示错误码不足以下结论，需看消息。
 func openAICompatibleModelNotFoundByCode(body []byte) (decided bool, notFound bool) {
-	if code := extractNestedUpstreamErrorCode(body); code != "" {
+	if code := strings.TrimSpace(extractUpstreamErrorCode(body)); code != "" {
 		return true, strings.EqualFold(code, "model_not_found")
 	}
 	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "code").String()), "model_not_found") {
 		return true, true
 	}
 	return false, false
-}
-
-// extractNestedUpstreamErrorCode 与上游 extractUpstreamErrorCode 一致，不含二开的顶层 code 兜底。
-func extractNestedUpstreamErrorCode(body []byte) string {
-	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
-		return code
-	}
-	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
-	if !strings.HasPrefix(inner, "{") {
-		return ""
-	}
-	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
-		return code
-	}
-	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		return strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String())
-	}
-	return ""
 }
