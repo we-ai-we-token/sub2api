@@ -104,9 +104,45 @@ func deductSynthInstructionsFromUsage(usage *OpenAIUsage, n int) {
 	rem := n - dCache
 	if rem > 0 {
 		dCreate := minInt(rem, usage.CacheCreationInputTokens)
+		deductSynthFromCacheCreationBuckets(usage, dCreate)
 		usage.CacheCreationInputTokens -= dCreate
 	}
 	usage.InputTokens -= minInt(n, usage.InputTokens)
+}
+
+// deductSynthFromCacheCreationBuckets 把即将从缓存写入聚合值里扣掉的 d 同步从 TTL 分桶里扣掉。
+// 必须在 usage.CacheCreationInputTokens 扣减之前调用（要用扣减前的聚合值判断明细是否有效）。
+//
+// 上游 v0.2.23（fe093d76b）给 OpenAI 缓存写入加了 30m / 12h 两个分桶，计费
+// （openAICacheCreationTTLCost）与解析都要求「两桶互斥且穷尽」：30m + 12h == 聚合值，
+// 不满足就整笔回退到短 TTL 价。只扣聚合不扣分桶会同时出两个问题：
+//   - 客户自己的 12h 写入被按 30m 价少收（12h 默认是 2.5x 输入价，30m 是 1.25x）；
+//   - usage_logs 落出 cache_creation_tokens=100 而 cache_creation_12h_tokens=4100 这种自相矛盾
+//     的行，本该隐藏的注入 token 数从分桶列里漏给用量页。
+//
+// 扣桶顺序：先 12h 后 30m。同一请求的缓存写入通常只落在一个桶里，顺序只在两桶都非零时才有
+// 区别；此时按「客户只为自己的内容付费」取对客户有利的一侧（先扣贵的）。
+//
+// 明细本来就无效（两桶之和 != 聚合，解析侧已把它们清零）时不动，计费继续走聚合价。
+//
+// Anthropic 口径的 5m / 1h 分桶不要求穷尽（余量归 5m），但 billingUsageTokens 在聚合值 <= 0 时
+// 会拿 5m + 1h 当聚合值，所以只需保证两桶之和不超过扣减后的聚合值，超出部分先扣 1h 再扣 5m。
+// Codex 协议账号目前不产生这两桶，这里只是不留口子。
+func deductSynthFromCacheCreationBuckets(usage *OpenAIUsage, d int) {
+	if usage == nil || d <= 0 {
+		return
+	}
+	aggregate := usage.CacheCreationInputTokens
+	if short, long := usage.CacheCreation30mInputTokens, usage.CacheCreation12hInputTokens; short >= 0 && long >= 0 && short+long > 0 && short+long == aggregate {
+		dLong := minInt(d, long)
+		usage.CacheCreation12hInputTokens -= dLong
+		usage.CacheCreation30mInputTokens -= minInt(d-dLong, short)
+	}
+	if excess := max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0) - (aggregate - d); excess > 0 {
+		dLong := minInt(excess, max(usage.CacheCreation1hTokens, 0))
+		usage.CacheCreation1hTokens -= dLong
+		usage.CacheCreation5mTokens -= minInt(excess-dLong, max(usage.CacheCreation5mTokens, 0))
+	}
 }
 
 // deductSynthInstructionsFromChatUsage 在 Chat Completions 的 usage 结构上扣减 N（客户端侧），

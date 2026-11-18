@@ -73,6 +73,119 @@ func TestDeductSynthInstructionsFromUsage(t *testing.T) {
 	}
 }
 
+// TestDeductSynthInstructionsFromUsage_KeepsCacheWriteTTLBuckets 钉住上游 v0.2.23 的不变量：
+// OpenAI 缓存写入的 30m / 12h 两桶互斥且穷尽（30m + 12h == 聚合值）。扣减只动聚合值的话，
+// openAICacheCreationTTLCost 会判明细无效、整笔回退到短 TTL 价，usage_logs 的分桶列还会把
+// 本该隐藏的注入 token 数漏出来。
+func TestDeductSynthInstructionsFromUsage_KeepsCacheWriteTTLBuckets(t *testing.T) {
+	const n = 4000
+	longPrice := 2.5
+	cases := []struct {
+		name                         string
+		in                           OpenAIUsage
+		wantCreate, want30m, want12h int
+		wantTTLCostOK                bool
+		wantTTLCost                  float64 // shortPrice=1.25, longPrice=2.5
+	}{
+		{
+			// 冷缓存、全部写入 12h：客户自己的 100 个 token 仍按 12h 价计。
+			name:          "cold_cache_all_12h",
+			in:            OpenAIUsage{InputTokens: 4200, CacheCreationInputTokens: 4100, CacheCreation12hInputTokens: 4100},
+			wantCreate:    100,
+			want30m:       0,
+			want12h:       100,
+			wantTTLCostOK: true,
+			wantTTLCost:   100 * 2.5,
+		},
+		{
+			name:          "cold_cache_all_30m",
+			in:            OpenAIUsage{InputTokens: 4200, CacheCreationInputTokens: 4100, CacheCreation30mInputTokens: 4100},
+			wantCreate:    100,
+			want30m:       100,
+			want12h:       0,
+			wantTTLCostOK: true,
+			wantTTLCost:   100 * 1.25,
+		},
+		{
+			// 两桶都有：先扣 12h，再扣 30m。
+			name:          "mixed_buckets_deduct_12h_first",
+			in:            OpenAIUsage{InputTokens: 6000, CacheCreationInputTokens: 5000, CacheCreation30mInputTokens: 2000, CacheCreation12hInputTokens: 3000},
+			wantCreate:    1000,
+			want30m:       1000,
+			want12h:       0,
+			wantTTLCostOK: true,
+			wantTTLCost:   1000 * 1.25,
+		},
+		{
+			// 热缓存先吃掉一部分，余量才落到缓存写入。
+			name:          "cache_read_absorbs_part",
+			in:            OpenAIUsage{InputTokens: 9000, CacheReadInputTokens: 3000, CacheCreationInputTokens: 5000, CacheCreation12hInputTokens: 5000},
+			wantCreate:    4000,
+			want30m:       0,
+			want12h:       4000,
+			wantTTLCostOK: true,
+			wantTTLCost:   4000 * 2.5,
+		},
+		{
+			// 注入部分把缓存写入扣光：聚合归零，分桶也必须归零。
+			name:          "aggregate_drained",
+			in:            OpenAIUsage{InputTokens: 4000, CacheCreationInputTokens: 3000, CacheCreation12hInputTokens: 3000},
+			wantCreate:    0,
+			want30m:       0,
+			want12h:       0,
+			wantTTLCostOK: false,
+		},
+		{
+			// 上游没给明细（解析侧已清零）：不凭空造分桶，计费继续走聚合价。
+			name:          "no_breakdown_untouched",
+			in:            OpenAIUsage{InputTokens: 4200, CacheCreationInputTokens: 4100},
+			wantCreate:    100,
+			want30m:       0,
+			want12h:       0,
+			wantTTLCostOK: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			u := tc.in
+			deductSynthInstructionsFromUsage(&u, n)
+			if u.CacheCreationInputTokens != tc.wantCreate || u.CacheCreation30mInputTokens != tc.want30m || u.CacheCreation12hInputTokens != tc.want12h {
+				t.Fatalf("create/30m/12h = %d/%d/%d, want %d/%d/%d",
+					u.CacheCreationInputTokens, u.CacheCreation30mInputTokens, u.CacheCreation12hInputTokens,
+					tc.wantCreate, tc.want30m, tc.want12h)
+			}
+			// 用上游真实的计费判定验证，而不是在测试里复述一遍不变量。
+			cost, ok := openAICacheCreationTTLCost(u.billingUsageTokens(), 1.25, &longPrice)
+			if ok != tc.wantTTLCostOK {
+				t.Fatalf("openAICacheCreationTTLCost ok = %v, want %v (tokens=%+v)", ok, tc.wantTTLCostOK, u.billingUsageTokens())
+			}
+			if ok && cost != tc.wantTTLCost {
+				t.Fatalf("openAICacheCreationTTLCost = %v, want %v", cost, tc.wantTTLCost)
+			}
+		})
+	}
+}
+
+// 5m / 1h 分桶不要求穷尽，但聚合值归零时 billingUsageTokens 会拿它们当聚合值，
+// 所以两桶之和不得超过扣减后的聚合值。
+func TestDeductSynthInstructionsFromUsage_Trims5m1hBucketsToAggregate(t *testing.T) {
+	u := OpenAIUsage{InputTokens: 4000, CacheCreationInputTokens: 3000, CacheCreation5mTokens: 1000, CacheCreation1hTokens: 2000}
+	deductSynthInstructionsFromUsage(&u, 4000)
+	if u.CacheCreationInputTokens != 0 || u.CacheCreation5mTokens != 0 || u.CacheCreation1hTokens != 0 {
+		t.Fatalf("create/5m/1h = %d/%d/%d, want 0/0/0", u.CacheCreationInputTokens, u.CacheCreation5mTokens, u.CacheCreation1hTokens)
+	}
+	if got := u.billingUsageTokens().CacheCreationTokens; got != 0 {
+		t.Fatalf("billing CacheCreationTokens = %d, want 0 (hidden tokens must not come back via 5m/1h)", got)
+	}
+
+	// 部分明细（余量归 5m）且扣减后仍装得下：不动。
+	u = OpenAIUsage{InputTokens: 9000, CacheCreationInputTokens: 8000, CacheCreation1hTokens: 1000}
+	deductSynthInstructionsFromUsage(&u, 4000)
+	if u.CacheCreationInputTokens != 4000 || u.CacheCreation5mTokens != 0 || u.CacheCreation1hTokens != 1000 {
+		t.Fatalf("create/5m/1h = %d/%d/%d, want 4000/0/1000", u.CacheCreationInputTokens, u.CacheCreation5mTokens, u.CacheCreation1hTokens)
+	}
+}
+
 // TestDeductSynthInstructionsFromUsage_NoOp 确认 N<=0 或 nil 时不改动。
 func TestDeductSynthInstructionsFromUsage_NoOp(t *testing.T) {
 	u := OpenAIUsage{InputTokens: 100, CacheReadInputTokens: 50}
