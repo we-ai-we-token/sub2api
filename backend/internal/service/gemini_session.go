@@ -55,7 +55,7 @@ func GenerateGeminiContentSessionHash(apiKeyID int64, model string, body []byte)
 		_, _ = d.WriteString(normalized)
 	}
 	_, _ = d.WriteString("|first_user=")
-	_, _ = d.WriteString(normalizeCompatSeedJSON(json.RawMessage(firstUserParts.Raw)))
+	_, _ = d.WriteString(geminiFirstUserPartsSeed(firstUserParts.Raw)) // 二开：带大图的 parts 不做 JSON 归一化，见 gemini_session_fork.go
 	return fmt.Sprintf("%016x", d.Sum64())
 }
 
